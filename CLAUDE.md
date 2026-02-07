@@ -14,24 +14,39 @@ Instructions and permissions for Claude Code AI assistant working on the whati8 
 
 ## Current Status
 
-### Completed (Phase 1 - Partial)
+### Completed (Phase 1 - Substantial Progress)
 - ✅ Flexible database schema (9 tables: users, nutrients, foods, food_nutrients, meals, food_logs, recipes, recipe_ingredients, user_goals)
 - ✅ Async SQLAlchemy 2.0 models with full type hints
 - ✅ Alembic migrations (async-enabled)
 - ✅ Configuration layer (Pydantic Settings)
 - ✅ Setup scripts (database creation, seeding, verification)
-- ✅ Authentication system (service layer + CLI commands)
+- ✅ **Authentication system** (Complete)
   - Password hashing (bcrypt)
   - JWT token management (python-jose)
   - CLI: register, login, whoami
+  - REST API: POST /auth/register, POST /auth/login, GET /auth/me
+  - HTTPBearer token authentication with dependency injection
+  - OpenAPI documentation (Swagger UI + ReDoc)
+- ✅ **USDA Data Import** (Complete)
+  - Bulk download from USDA FoodData Central
+  - 8,058 foods imported (Foundation Foods + SR Legacy)
+  - 130,633 nutrient relationships
+  - CLI command: `uv run python -m whati8 import-usda`
+  - Automated download, parsing, and insertion
+- ✅ **Food Search API** (Complete)
+  - Pydantic schemas for food endpoints
+  - GET /foods/search - Fuzzy text search with pg_trgm
+  - GET /foods/{id} - Food details with nutrients
+  - Typo-tolerant search (e.g., "chiken" → "chicken")
+  - Similarity scoring and pagination
+  - Authentication required
 
 ### Next Steps
-1. Convert auth CLI to REST API endpoints (FastAPI)
-2. Create Pydantic schemas for food/logging endpoints
-3. USDA bulk import script
-4. Food search API with fuzzy matching
-5. Food logging CRUD API
-6. Daily dashboard API
+1. Food logging CRUD API (POST/GET/PUT/DELETE /logs)
+2. Daily dashboard API (GET /dashboard/today, /dashboard/week)
+3. Goal management API (CRUD for user goals)
+4. Meal management API (CRUD for custom meals)
+5. Recipe management API (CRUD for user recipes)
 
 ## Agreed Permissions
 
@@ -352,10 +367,14 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - `whati8/config.py` - Pydantic Settings
 - `whati8/database.py` - Async database connection
 - `whati8/models/` - SQLAlchemy models (9 files)
-- `whati8/schemas/` - Pydantic schemas
-- `whati8/services/` - Business logic
-- `whati8/api/` - FastAPI routes (future)
-- `whati8/cli/` - Click CLI commands
+- `whati8/schemas/` - Pydantic schemas (auth.py, food.py)
+- `whati8/services/` - Business logic (auth.py)
+- `whati8/api/` - FastAPI application
+  - `app.py` - FastAPI factory
+  - `deps.py` - Shared dependencies (auth, db)
+  - `exceptions.py` - Exception handlers
+  - `routers/` - API endpoints (auth.py, food.py)
+- `whati8/cli/` - Click CLI commands (auth.py)
 
 ### Configuration
 - `.env` - Environment variables (not in git)
@@ -367,6 +386,9 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - `scripts/setup_db.sh` - Database setup automation
 - `scripts/seed_standard_data.py` - Seed nutrients and meals
 - `scripts/verify_setup.py` - Verify installation
+- `scripts/import_usda_data.py` - USDA bulk data import
+- `scripts/test_api.sh` - Test authentication endpoints
+- `scripts/test_food_api.sh` - Test food search endpoints
 
 ### Documentation
 - `README.md` - User-facing documentation
@@ -390,6 +412,16 @@ uv run alembic upgrade head                # Run migrations
 uv run python -m whati8 auth register      # Register user
 uv run python -m whati8 auth login         # Login
 uv run python -m whati8 auth whoami <token> # Validate token
+uv run python -m whati8 import-usda        # Import USDA food data
+uv run python -m whati8 import-usda --limit 100 # Test import
+
+# API Server
+uv run python -m whati8 serve --reload     # Start development server
+# Access at: http://localhost:8000/docs
+
+# Testing
+./scripts/test_api.sh                      # Test auth endpoints
+./scripts/test_food_api.sh                 # Test food search endpoints
 
 # Development
 uv add <package>                           # Add dependency
@@ -405,4 +437,4 @@ uv run python -c "from whati8.models import User" # Test imports
 
 ---
 
-**Last Updated**: 2026-02-07 (After authentication system implementation)
+**Last Updated**: 2026-02-07 (After USDA import and Food Search API implementation)

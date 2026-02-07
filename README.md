@@ -668,9 +668,19 @@ await db.commit()
         - REST API endpoints: POST /auth/register, POST /auth/login, GET /auth/me
         - FastAPI app with OpenAPI documentation (Swagger UI + ReDoc)
         - HTTPBearer token authentication with dependency injection
-    *   ⬜ USDA bulk data import script (populate food_nutrients)
-    *   ⬜ Pydantic schemas for food/logging endpoints
-    *   ⬜ Food search endpoint (`GET /foods/search`) with fuzzy matching
+    *   ✅ **USDA Data Import** (Complete)
+        - Bulk import script for Foundation Foods + SR Legacy
+        - 8,058 foods with 130,633 nutrient relationships
+        - CLI command: `uv run python -m whati8 import-usda`
+        - Automated download, parsing, and database insertion
+        - Nutrient ID mapping (USDA → our standard nutrients)
+    *   ✅ **Food Search API** (Complete)
+        - Pydantic schemas for food endpoints (FoodResponse, FoodSearchResult)
+        - GET /foods/search - Fuzzy search with pg_trgm (typo-tolerant)
+        - GET /foods/{id} - Food details with all nutrients
+        - Authentication required on all endpoints
+        - Pagination support (limit, offset)
+        - Similarity scoring for search results
     *   ⬜ AI agent for natural language food resolution (`/resolve`)
     *   ⬜ Logging endpoints (`/logs` - CRUD operations)
     *   ⬜ Daily nutrition dashboard (`/dashboard/today`)

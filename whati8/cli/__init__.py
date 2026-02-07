@@ -1,5 +1,11 @@
 """CLI commands for whati8."""
+import asyncio
+import subprocess
+import sys
+from pathlib import Path
+
 import click
+
 from whati8.cli.auth import auth
 
 
@@ -30,6 +36,28 @@ def serve(host: str, port: int, reload: bool):
         port=port,
         reload=reload,
     )
+
+
+@cli.command(name="import-usda")
+@click.option("--limit", "-l", type=int, help="Limit number of foods to import per dataset (for testing)")
+def import_usda(limit: int | None):
+    """Import USDA Food Data Central bulk data into database.
+
+    Downloads bulk JSON files from USDA FDC and imports ~9,000 foods with nutrients.
+    Includes Foundation Foods (~1,000) and SR Legacy (~8,000) datasets.
+
+    Examples:
+        uv run python -m whati8 import-usda           # Full import
+        uv run python -m whati8 import-usda --limit 100  # Test with 100 foods
+    """
+    script_path = Path(__file__).parent.parent.parent / "scripts" / "import_usda_data.py"
+
+    cmd = [sys.executable, str(script_path)]
+    if limit:
+        cmd.extend(["--limit", str(limit)])
+
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)
 
 
 # Register command groups

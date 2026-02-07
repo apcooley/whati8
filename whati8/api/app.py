@@ -10,6 +10,7 @@ from whati8.api.exceptions import (
     jwt_exception_handler,
 )
 from whati8.api.routers.auth import router as auth_router
+from whati8.api.routers.food import router as food_router
 
 
 def create_app() -> FastAPI:
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
 
     # 4. Include routers
     app.include_router(auth_router, prefix="/auth", tags=["authentication"])
+    app.include_router(food_router)  # Prefix already in router definition
 
     # 5. Health check endpoint
     @app.get("/health", tags=["health"])

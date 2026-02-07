@@ -45,14 +45,33 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 - ✅ OpenAPI documentation (Swagger UI + ReDoc)
 - ✅ LAN-accessible development server
 
+**USDA Data Import System**
+- ✅ Bulk download from USDA FoodData Central (Foundation Foods + SR Legacy)
+- ✅ Automated ZIP download and JSON extraction
+- ✅ USDA nutrient ID mapping to standard nutrients
+- ✅ 8,058 foods imported with 130,633 nutrient relationships
+- ✅ CLI command: `uv run python -m whati8 import-usda`
+- ✅ Progress tracking with batch processing (100 foods/batch)
+- ✅ Data cached locally (~219 MB total)
+
+**Food Search API**
+- ✅ Pydantic schemas (FoodResponse, FoodSearchResultItem, FoodSearchResponse)
+- ✅ GET /foods/search - Fuzzy text search with pg_trgm
+- ✅ GET /foods/{id} - Detailed food with all nutrients
+- ✅ Typo-tolerant search ("chiken" → "chicken")
+- ✅ Similarity scoring (0-1 range, higher = better match)
+- ✅ Pagination support (limit, offset)
+- ✅ Authentication required on all endpoints
+- ✅ Key nutrient preview in search results (calories, protein, carbs, fat)
+- ✅ Complete nutrient data in detail endpoint
+
 ### ⏭️ Next Steps (Phase 1 Continuation)
 
-1. **Pydantic Schemas** - Food, FoodLog, Recipe schemas
-3. **USDA Import** - Bulk import script to populate food_nutrients
-4. **Food Search API** - Fuzzy search endpoint with authentication
-5. **Logging API** - CRUD endpoints for food logs
-6. **Dashboard API** - Daily nutrition summary
-7. **Goal/Meal Management** - CRUD endpoints for custom goals and meals
+1. **Food Logging API** - CRUD endpoints for daily consumption tracking
+2. **Dashboard API** - Daily/weekly nutrition summaries with goal tracking
+3. **Goal Management API** - CRUD endpoints for flexible nutrition goals
+4. **Meal Management API** - CRUD endpoints for custom meals
+5. **Recipe Management API** - CRUD endpoints for user recipes
 
 ---
 
@@ -90,7 +109,8 @@ whati8/
 │   ├── recipe.py          # User recipes + ingredients
 │   └── user_goal.py       # Flexible user goals
 ├── schemas/               # Pydantic request/response schemas
-│   └── auth.py            # Auth schemas (UserCreate, Token, etc.)
+│   ├── auth.py            # Auth schemas (UserCreate, Token, etc.)
+│   └── food.py            # Food schemas (FoodResponse, FoodSearchResult, etc.)
 ├── services/              # Business logic layer
 │   └── auth.py            # Authentication service
 ├── api/                   # FastAPI application
@@ -100,7 +120,8 @@ whati8/
 │   ├── exceptions.py      # Exception handlers
 │   └── routers/           # API route modules
 │       ├── __init__.py
-│       └── auth.py        # Auth endpoints
+│       ├── auth.py        # Auth endpoints
+│       └── food.py        # Food search endpoints
 └── cli/                   # CLI commands
     ├── __init__.py        # CLI entry + serve command
     └── auth.py            # Auth CLI (register, login, whoami)
@@ -396,6 +417,290 @@ curl http://localhost:8000/auth/me \
 - **CORS** enabled for frontend development
 - **OpenAPI** documentation with security schemes
 - **Validation** via Pydantic schemas
+
+---
+
+## USDA Data Import System
+
+### Overview
+
+Automated import system for USDA Food Data Central bulk datasets. Downloads, parses, and imports foods with complete nutrient profiles.
+
+### Components
+
+**1. Import Script** (`scripts/import_usda_data.py`)
+
+Main import orchestrator that handles:
+- Bulk file download from USDA FDC
+- ZIP extraction and JSON parsing
+- Nutrient ID mapping (USDA → our database)
+- Batch insertion with progress tracking
+- Error handling and statistics
+
+**2. CLI Command** (`whati8/cli/__init__.py`)
+
+```bash
+# Full import (~8,000 foods)
+uv run python -m whati8 import-usda
+
+# Test import (limit to N foods per dataset)
+uv run python -m whati8 import-usda --limit 100
+```
+
+**3. Data Sources**
+
+| Dataset | Foods | Size (Compressed) | Size (Uncompressed) |
+|---------|-------|-------------------|---------------------|
+| Foundation Foods | 245 | 409 KB | 5.5 MB |
+| SR Legacy | 7,793 | 12 MB | 201 MB |
+| **Total Imported** | **8,038** | **~12.5 MB** | **~206 MB** |
+
+**Note:** Branded Foods database (400,000+ foods, 3.1 GB) not imported by default.
+
+### Nutrient Mapping
+
+The importer maps USDA nutrient IDs to our standard nutrients:
+
+```python
+NUTRIENT_MAPPING = {
+    1008: "Calories",              # Energy
+    1003: "Protein",
+    1005: "Total Carbohydrates",   # Carbohydrate
+    1004: "Total Fat",
+    1079: "Dietary Fiber",         # Fiber
+    2000: "Total Sugars",          # Total Sugar
+    1258: "Saturated Fat",
+    1257: "Trans Fat",
+    1292: "Monounsaturated Fat",
+    1293: "Polyunsaturated Fat",
+    1093: "Sodium",
+    1253: "Cholesterol",
+    1092: "Potassium",
+    1106: "Vitamin A",
+    1162: "Vitamin C",
+    1114: "Vitamin D",
+    1087: "Calcium",
+    1089: "Iron",
+}
+```
+
+### Import Statistics
+
+**Final Database:**
+- 8,058 foods
+- 130,633 nutrient relationships
+- 16.2 average nutrients per food
+- ~30 seconds import time
+
+### File Structure
+
+**Downloaded Files (cached in `data/usda/`):**
+```
+data/usda/
+├── FoodData_Central_foundation_food_json_2023-10-26.zip
+├── FoodData_Central_foundation_food_json_2023-10-26/
+│   └── foundationDownload.json (5.5 MB)
+├── FoodData_Central_sr_legacy_food_json_2021-10-28.zip
+└── FoodData_Central_sr_legacy_food_json_2021-10-28/
+    └── FoodData_Central_sr_legacy_food_json_2021-10-28.json (201 MB)
+```
+
+---
+
+## Food Search API
+
+### Overview
+
+RESTful API for searching foods with fuzzy text matching and retrieving detailed nutrition information.
+
+### Components
+
+**1. Pydantic Schemas** (`whati8/schemas/food.py`)
+
+```python
+class NutrientResponse(BaseModel):
+    """Nutrient information."""
+    id: int
+    name: str
+    unit: str
+    description: str | None
+
+class FoodNutrientResponse(BaseModel):
+    """Nutrient amount in a food."""
+    nutrient: NutrientResponse
+    amount_per_serving: float
+
+class FoodResponse(BaseModel):
+    """Complete food with all nutrients."""
+    id: int
+    name: str
+    brand: str | None
+    serving_size: float
+    unit: str
+    usda_fdc_id: int | None
+    food_nutrients: list[FoodNutrientResponse]
+    # ... timestamps, notes, etc.
+
+class FoodSearchResultItem(BaseModel):
+    """Search result with key nutrients preview."""
+    id: int
+    name: str
+    brand: str | None
+    serving_size: float
+    unit: str
+    similarity: float  # 0-1 similarity score
+    # Key nutrients for preview
+    calories: float | None
+    protein: float | None
+    carbs: float | None
+    fat: float | None
+
+class FoodSearchResponse(BaseModel):
+    """Paginated search results."""
+    query: str
+    results: list[FoodSearchResultItem]
+    total: int
+    limit: int
+    offset: int
+```
+
+**2. API Router** (`whati8/api/routers/food.py`)
+
+Two main endpoints:
+
+**GET /foods/search** - Fuzzy food search
+- Query parameter: `q` (min 2 characters)
+- Optional: `limit` (1-100, default 20), `offset` (default 0)
+- Uses PostgreSQL `pg_trgm` for typo-tolerance
+- Returns similarity scores (0-1, higher = better match)
+- Includes key nutrient preview
+- Authentication required
+
+**GET /foods/{id}** - Food details
+- Path parameter: `food_id`
+- Returns complete food with all nutrients
+- Eager-loads relationships for performance
+- Authentication required
+
+### Search Algorithm
+
+Uses PostgreSQL's **pg_trgm extension** for trigram-based similarity:
+
+```python
+# Similarity threshold (0.1 = broad matching)
+similarity_threshold = 0.1
+
+# Query with similarity scoring
+query = (
+    select(Food, func.similarity(Food.name, search_term).label("score"))
+    .where(func.similarity(Food.name, search_term) > similarity_threshold)
+    .order_by(func.similarity(Food.name, search_term).desc())
+)
+```
+
+**Example:** Search for "chiken" (typo)
+- Still finds "Chicken, broilers or fryers..."
+- Similarity score: 0.36 (lower than exact match, but above threshold)
+- Results ranked by similarity
+
+### Testing the API
+
+**Automated Test Script:**
+```bash
+./scripts/test_food_api.sh
+```
+
+Tests:
+- ✅ User authentication
+- ✅ Exact search ("chicken")
+- ✅ Fuzzy search with typos ("chiken", "brocoli")
+- ✅ Food detail retrieval
+- ✅ Authentication enforcement
+
+**Manual Testing with curl:**
+```bash
+# 1. Login
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"foodtester","password":"password123"}' \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+
+# 2. Search foods (typo-tolerant!)
+curl "http://localhost:8000/foods/search?q=chiken&limit=5" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+# 3. Get food details
+curl "http://localhost:8000/foods/102" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+**Using Swagger UI:**
+1. Start server: `uv run python -m whati8 serve --reload`
+2. Open: http://localhost:8000/docs
+3. Authorize with JWT token
+4. Try the `/foods/search` and `/foods/{id}` endpoints
+
+### Performance Considerations
+
+**Search Optimization:**
+- GIN index on `food.name` for fast trigram matching
+- Batch nutrient queries (one query per search, not per food)
+- Nutrient map caching within request
+
+**Detail Endpoint:**
+- Eager loading with `selectinload()` to avoid N+1 queries
+- Single database round-trip for food + all nutrients
+
+### Example Responses
+
+**Search Response:**
+```json
+{
+  "query": "chicken",
+  "results": [
+    {
+      "id": 6318,
+      "name": "Fat, chicken",
+      "brand": null,
+      "serving_size": 205.0,
+      "unit": "g",
+      "usda_fdc_id": 173564,
+      "similarity": 0.67,
+      "calories": 900.0,
+      "protein": 0.0,
+      "carbs": 0.0,
+      "fat": 99.8
+    }
+  ],
+  "total": 446,
+  "limit": 5,
+  "offset": 0
+}
+```
+
+**Food Detail Response:**
+```json
+{
+  "id": 6318,
+  "name": "Fat, chicken",
+  "serving_size": 205.0,
+  "unit": "g",
+  "usda_fdc_id": 173564,
+  "food_nutrients": [
+    {
+      "nutrient": {
+        "id": 1,
+        "name": "Calories",
+        "unit": "kcal"
+      },
+      "amount_per_serving": 900.0
+    },
+    // ... 14 more nutrients
+  ],
+  "created_at": "2026-02-07T16:19:33.678000",
+  "updated_at": "2026-02-07T16:19:33.678000"
+}
+```
 
 ---
 
@@ -697,11 +1002,12 @@ whati8/api/
 ├── deps.py             # Shared dependencies (get_current_user, get_db)
 ├── exceptions.py       # Exception handlers (consistent error responses)
 └── routers/
-    └── auth.py         # Authentication endpoints
+    ├── auth.py         # Authentication endpoints
+    └── food.py         # Food search endpoints
 ```
 
 **Design Pattern:**
-- **Modular routers** for easy scaling (future: foods, logs, recipes)
+- **Modular routers** for easy scaling (future: logs, recipes, dashboard)
 - **Dependency injection** for authentication and database sessions
 - **Centralized exception handling** for consistent API responses
 - **Service layer reuse** - API endpoints delegate to service layer
@@ -826,6 +1132,137 @@ Authorization: Bearer <access_token>
 **Example:**
 ```bash
 curl http://localhost:8000/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+#### Food Search: Search Foods
+
+**GET /foods/search** 🔒
+
+Search for foods using fuzzy text matching with typo-tolerance.
+
+**Query Parameters:**
+- `q` (required) - Search query, minimum 2 characters
+- `limit` (optional) - Results per page, 1-100, default 20
+- `offset` (optional) - Result offset for pagination, default 0
+
+**Request Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "query": "chicken",
+  "results": [
+    {
+      "id": 6318,
+      "name": "Fat, chicken",
+      "brand": null,
+      "serving_size": 205.0,
+      "unit": "g",
+      "usda_fdc_id": 173564,
+      "similarity": 0.67,
+      "calories": 900.0,
+      "protein": 0.0,
+      "carbs": 0.0,
+      "fat": 99.8
+    }
+  ],
+  "total": 446,
+  "limit": 5,
+  "offset": 0
+}
+```
+
+**Features:**
+- **Typo-tolerant:** "chiken" still finds "chicken" foods
+- **Similarity scoring:** 0-1 range, higher = better match
+- **Key nutrients:** Calories, protein, carbs, fat included
+- **Pagination:** Use offset/limit for large result sets
+
+**Errors:**
+- `401 Unauthorized` - Authentication required
+- `422 Unprocessable Entity` - Query too short (< 2 chars)
+
+**Examples:**
+```bash
+# Basic search
+curl "http://localhost:8000/foods/search?q=chicken" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Typo-tolerant search
+curl "http://localhost:8000/foods/search?q=chiken&limit=5" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Pagination
+curl "http://localhost:8000/foods/search?q=egg&limit=20&offset=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+#### Food Search: Get Food Details
+
+**GET /foods/{food_id}** 🔒
+
+Get detailed food information with all nutrients.
+
+**Path Parameters:**
+- `food_id` (required) - Food ID
+
+**Request Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 102,
+  "name": "Broccoli, raw",
+  "brand": null,
+  "serving_size": 76.0,
+  "unit": "g",
+  "usda_fdc_id": 747447,
+  "created_by_user_id": null,
+  "notes": "USDA FDC ID: 747447",
+  "food_nutrients": [
+    {
+      "nutrient": {
+        "id": 1,
+        "name": "Calories",
+        "unit": "kcal",
+        "description": "Energy content"
+      },
+      "amount_per_serving": 31.0
+    },
+    {
+      "nutrient": {
+        "id": 2,
+        "name": "Protein",
+        "unit": "g",
+        "description": "Protein content"
+      },
+      "amount_per_serving": 2.57
+    }
+    // ... 12 more nutrients
+  ],
+  "created_at": "2026-02-07T16:14:33.677000",
+  "updated_at": "2026-02-07T16:14:33.677000"
+}
+```
+
+**Errors:**
+- `401 Unauthorized` - Authentication required
+- `404 Not Found` - Food ID does not exist
+
+**Example:**
+```bash
+curl "http://localhost:8000/foods/102" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
