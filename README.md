@@ -123,6 +123,71 @@ uv run python -m whati8.cli import-usda-data
 
 ---
 
+## Using the API
+
+### Start the Server
+
+```bash
+# Development server with auto-reload (accessible over LAN)
+uv run python -m whati8 serve --reload
+```
+
+The server will start on `http://0.0.0.0:8000` by default, making it accessible:
+- **Locally**: http://localhost:8000
+- **From LAN**: http://192.168.1.11:8000 (replace with your server IP)
+
+### API Documentation
+
+**Interactive Documentation** (try endpoints in your browser):
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### Authentication Flow
+
+1. **Register a new user:**
+   ```bash
+   curl -X POST http://localhost:8000/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"username":"testuser","email":"test@example.com","password":"password123"}'
+   ```
+
+2. **Login to get JWT token:**
+   ```bash
+   TOKEN=$(curl -X POST http://localhost:8000/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"login":"testuser","password":"password123"}' \
+     | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+   ```
+
+3. **Access protected endpoints:**
+   ```bash
+   curl http://localhost:8000/auth/me \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+
+### CLI Alternative
+
+For terminal usage, CLI commands are also available:
+```bash
+# Register
+uv run python -m whati8 auth register
+
+# Login
+uv run python -m whati8 auth login
+
+# Validate token
+uv run python -m whati8 auth whoami <token>
+```
+
+### Testing
+
+Run the automated test suite:
+```bash
+./scripts/test_api.sh
+```
+
+---
+
 ## Architecture Decisions
 
 ### AI/LLM Service: Anthropic Claude (Default)
@@ -152,9 +217,10 @@ uv run python -m whati8.cli import-usda-data
 
 ## Documentation
 
-- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Complete implementation guide: schema design, auth system, setup instructions
+- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Complete implementation guide: schema design, auth system, API reference, setup instructions
 - **[CLAUDE.md](CLAUDE.md)** - Instructions for Claude Code AI assistant
 - **[.env.example](.env.example)** - Environment configuration template
+- **API Docs** - Interactive documentation at http://localhost:8000/docs (when server running)
 
 ---
 
@@ -201,8 +267,15 @@ uv sync
 # Run tests (when available)
 uv run pytest
 
-# Start API server (when implemented)
-uv run uvicorn whati8.main:app --reload
+# Start API server (development with auto-reload)
+uv run python -m whati8 serve --reload
+
+# Access API documentation
+# - Swagger UI: http://localhost:8000/docs
+# - ReDoc: http://localhost:8000/redoc
+
+# Test API endpoints
+./scripts/test_api.sh
 ```
 
 ---
@@ -587,15 +660,17 @@ await db.commit()
     *   ✅ Database connection layer (async engine + session management)
     *   ✅ Configuration management (Pydantic Settings with .env)
     *   ✅ Setup automation scripts (database setup + verification + seeding)
-    *   ✅ **Authentication System** (CLI + service layer)
+    *   ✅ **Authentication System** (Complete)
         - Pydantic schemas for auth (UserCreate, Token, etc.)
         - Password hashing (bcrypt), JWT tokens (python-jose)
+        - Service layer for business logic
         - CLI commands: register, login, whoami
-        - Service layer ready for REST API conversion
-    *   ⬜ Pydantic schemas for food/logging endpoints
+        - REST API endpoints: POST /auth/register, POST /auth/login, GET /auth/me
+        - FastAPI app with OpenAPI documentation (Swagger UI + ReDoc)
+        - HTTPBearer token authentication with dependency injection
     *   ⬜ USDA bulk data import script (populate food_nutrients)
-    *   ⬜ Authentication REST API endpoints (`POST /auth/register`, `POST /auth/login`, `GET /auth/me`)
-    *   ⬜ Food search endpoint (`/foods/search`) with fuzzy matching
+    *   ⬜ Pydantic schemas for food/logging endpoints
+    *   ⬜ Food search endpoint (`GET /foods/search`) with fuzzy matching
     *   ⬜ AI agent for natural language food resolution (`/resolve`)
     *   ⬜ Logging endpoints (`/logs` - CRUD operations)
     *   ⬜ Daily nutrition dashboard (`/dashboard/today`)

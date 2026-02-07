@@ -9,6 +9,7 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 - [Authentication System](#authentication-system)
 - [Setup Instructions](#setup-instructions)
 - [Usage Examples](#usage-examples)
+- [API Reference](#api-reference)
 - [Next Steps](#next-steps)
 
 ---
@@ -38,11 +39,15 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 - ✅ bcrypt password hashing
 - ✅ JWT token management with python-jose
 - ✅ Database migrations with users table
+- ✅ REST API endpoints (register, login, /me)
+- ✅ FastAPI app with exception handlers and CORS
+- ✅ Bearer token authentication with dependency injection
+- ✅ OpenAPI documentation (Swagger UI + ReDoc)
+- ✅ LAN-accessible development server
 
 ### ⏭️ Next Steps (Phase 1 Continuation)
 
-1. **Convert Auth to REST API** - FastAPI endpoints using existing service layer
-2. **Pydantic Schemas** - Food, FoodLog, Recipe schemas
+1. **Pydantic Schemas** - Food, FoodLog, Recipe schemas
 3. **USDA Import** - Bulk import script to populate food_nutrients
 4. **Food Search API** - Fuzzy search endpoint with authentication
 5. **Logging API** - CRUD endpoints for food logs
@@ -88,9 +93,16 @@ whati8/
 │   └── auth.py            # Auth schemas (UserCreate, Token, etc.)
 ├── services/              # Business logic layer
 │   └── auth.py            # Authentication service
-├── api/                   # FastAPI routes (future)
+├── api/                   # FastAPI application
+│   ├── __init__.py        # Export app instance
+│   ├── app.py             # FastAPI app factory
+│   ├── deps.py            # Shared dependencies (auth, db)
+│   ├── exceptions.py      # Exception handlers
+│   └── routers/           # API route modules
+│       ├── __init__.py
+│       └── auth.py        # Auth endpoints
 └── cli/                   # CLI commands
-    ├── __init__.py
+    ├── __init__.py        # CLI entry + serve command
     └── auth.py            # Auth CLI (register, login, whoami)
 ```
 
@@ -224,7 +236,11 @@ CREATE TABLE user_goals (
 
 ### Overview
 
-Complete authentication system with CLI commands and service layer, ready for REST API conversion.
+Complete authentication system with:
+- **Service Layer**: Reusable business logic for password hashing, JWT tokens, user CRUD
+- **CLI Commands**: register, login, whoami for terminal usage
+- **REST API**: FastAPI endpoints with OpenAPI documentation
+- **Security**: HTTPBearer token authentication with dependency injection
 
 ### Components
 
@@ -307,47 +323,79 @@ uv run python -m whati8 auth whoami <token>
 - ✅ **Database Constraints**: Unique username and email enforced
 - ✅ **JWT Spec Compliance**: Subject claim as string, converted to int internally
 
-### Converting to REST API
+### REST API Implementation
 
-The service layer is ready for REST API. Just create thin FastAPI route wrappers:
+**FastAPI application with modular architecture** (`whati8/api/`):
 
-```python
-# whati8/api/auth.py (future)
-from fastapi import APIRouter, Depends, HTTPException
-from whati8.services.auth import AuthService
-from whati8.schemas.auth import UserCreate, UserLogin, Token, UserResponse
+#### App Structure
+- `app.py` - FastAPI factory with CORS, exception handlers, routers
+- `deps.py` - Shared dependencies (authentication, database)
+- `exceptions.py` - Exception handlers (HTTPException, JWTError, IntegrityError)
+- `routers/auth.py` - Authentication endpoints
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+#### Endpoints
 
-@router.post("/register", response_model=UserResponse)
-async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
-    """Register a new user."""
-    user = await AuthService.create_user(db, user_data)
-    return user
+**POST /auth/register** (201 Created)
+- Body: `{"username": "user", "email": "user@example.com", "password": "password123"}`
+- Returns: User object (without password)
+- Errors: 409 (duplicate), 422 (validation)
 
-@router.post("/login", response_model=Token)
-async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
-    """Login and get JWT token."""
-    user = await AuthService.authenticate_user(db, credentials.login, credentials.password)
-    if not user:
-        raise HTTPException(401, "Invalid credentials")
+**POST /auth/login** (200 OK)
+- Body: `{"login": "user", "password": "password123"}`
+- Returns: `{"access_token": "...", "token_type": "bearer", "expires_in": 86400}`
+- Errors: 401 (invalid credentials), 422 (validation)
 
-    token = AuthService.create_access_token(user.id)
-    expires_in = settings.jwt_expiration_hours * 3600  # Convert to seconds
-    return Token(access_token=token, expires_in=expires_in)
+**GET /auth/me** (200 OK)
+- Header: `Authorization: Bearer <token>`
+- Returns: Current user object
+- Errors: 401 (invalid token), 404 (user not found)
 
-@router.get("/me", response_model=UserResponse)
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get current authenticated user."""
-    payload = AuthService.decode_token(token)
-    user = await AuthService.get_user_by_id(db, payload.sub)
-    if not user:
-        raise HTTPException(401, "User not found")
-    return user
+#### Starting the Server
+
+```bash
+# Development server with auto-reload (LAN-accessible)
+uv run python -m whati8 serve --reload
+
+# Access from any LAN device:
+# - Swagger UI: http://192.168.1.11:8000/docs
+# - ReDoc: http://192.168.1.11:8000/redoc
+# - From server: http://localhost:8000/docs
+
+# Custom host/port
+uv run python -m whati8 serve --host 0.0.0.0 --port 8080 --reload
 ```
+
+#### Testing the API
+
+```bash
+# Automated test script (from any LAN device)
+./scripts/test_api.sh
+
+# Or manually with curl:
+# Register
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","email":"test@example.com","password":"password123"}'
+
+# Login
+TOKEN=$(curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"testuser","password":"password123"}' \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+
+# Get current user
+curl http://localhost:8000/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+#### Security Features
+
+- **HTTPBearer** authentication scheme
+- **Dependency injection** for protected endpoints
+- **Exception handlers** for consistent error responses
+- **CORS** enabled for frontend development
+- **OpenAPI** documentation with security schemes
+- **Validation** via Pydantic schemas
 
 ---
 
@@ -451,6 +499,8 @@ psql -U whati8 -d whati8 -c "SELECT * FROM meals ORDER BY display_order;"
 
 ### 5. Test Authentication
 
+#### CLI Commands
+
 ```bash
 # Register a user
 uv run python -m whati8 auth register
@@ -464,6 +514,56 @@ uv run python -m whati8 auth login
 # Validate token
 uv run python -m whati8 auth whoami <paste-token-here>
 ```
+
+#### REST API Server
+
+```bash
+# Start development server (accessible over LAN)
+uv run python -m whati8 serve --reload
+
+# Server will be available at:
+# - Local: http://localhost:8000/docs
+# - LAN: http://192.168.1.11:8000/docs (replace with your server IP)
+
+# Custom host/port
+uv run python -m whati8 serve --host 0.0.0.0 --port 8080 --reload
+```
+
+**Access API Documentation:**
+- **Swagger UI**: http://localhost:8000/docs (interactive, test endpoints)
+- **ReDoc**: http://localhost:8000/redoc (clean, readable docs)
+- **OpenAPI JSON**: http://localhost:8000/openapi.json (machine-readable spec)
+
+#### Test REST API
+
+**Option A: Automated Test Script**
+```bash
+./scripts/test_api.sh
+```
+
+**Option B: Manual Testing with curl**
+```bash
+# 1. Register a new user
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","email":"test@example.com","password":"password123"}'
+
+# 2. Login and get token
+TOKEN=$(curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"testuser","password":"password123"}' \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+
+# 3. Get current user (protected endpoint)
+curl http://localhost:8000/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Option C: Swagger UI (Recommended)**
+1. Start server: `uv run python -m whati8 serve --reload`
+2. Open browser: http://localhost:8000/docs
+3. Click "Try it out" on any endpoint
+4. For protected endpoints: Click "Authorize" button, paste token
 
 ---
 
@@ -579,31 +679,323 @@ async def create_custom_meal():
 
 ---
 
+## API Reference
+
+### Overview
+
+The whati8 REST API provides HTTP endpoints for all authentication and data management operations. Built with FastAPI, it features automatic OpenAPI documentation, request/response validation, and JWT-based authentication.
+
+**Base URL**: `http://localhost:8000` (development)
+
+**Authentication**: Bearer token in `Authorization` header for protected endpoints
+
+### API Architecture
+
+```
+whati8/api/
+├── app.py              # FastAPI factory (CORS, exception handlers, routers)
+├── deps.py             # Shared dependencies (get_current_user, get_db)
+├── exceptions.py       # Exception handlers (consistent error responses)
+└── routers/
+    └── auth.py         # Authentication endpoints
+```
+
+**Design Pattern:**
+- **Modular routers** for easy scaling (future: foods, logs, recipes)
+- **Dependency injection** for authentication and database sessions
+- **Centralized exception handling** for consistent API responses
+- **Service layer reuse** - API endpoints delegate to service layer
+
+### Endpoints
+
+#### Health Check
+
+**GET /health**
+
+Health check endpoint for monitoring.
+
+**Response (200 OK):**
+```json
+{
+  "status": "healthy"
+}
+```
+
+---
+
+#### Authentication: Register
+
+**POST /auth/register**
+
+Register a new user account.
+
+**Request Body:**
+```json
+{
+  "username": "testuser",     // 3-50 characters, unique
+  "email": "test@example.com", // Valid email, unique
+  "password": "password123"    // Minimum 8 characters
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "created_at": "2026-02-07T19:10:50.915174"
+}
+```
+
+**Errors:**
+- `409 Conflict` - Username or email already exists
+- `422 Unprocessable Entity` - Validation error (short password, invalid email, etc.)
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","email":"test@example.com","password":"password123"}'
+```
+
+---
+
+#### Authentication: Login
+
+**POST /auth/login**
+
+Authenticate and receive JWT access token.
+
+**Request Body:**
+```json
+{
+  "login": "testuser",      // Username OR email
+  "password": "password123"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 86400  // Seconds (24 hours default)
+}
+```
+
+**Errors:**
+- `401 Unauthorized` - Incorrect username/email or password
+- `422 Unprocessable Entity` - Missing required fields
+
+**Example:**
+```bash
+TOKEN=$(curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"testuser","password":"password123"}' \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+```
+
+---
+
+#### Authentication: Get Current User
+
+**GET /auth/me** 🔒
+
+Get current authenticated user's profile. Requires authentication.
+
+**Request Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "created_at": "2026-02-07T19:10:50.915174"
+}
+```
+
+**Errors:**
+- `401 Unauthorized` - Invalid, expired, or missing token
+- `404 Not Found` - User not found in database
+
+**Example:**
+```bash
+curl http://localhost:8000/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+### Error Responses
+
+All API errors return consistent JSON format:
+
+```json
+{
+  "detail": "Error message",
+  "status_code": 400
+}
+```
+
+**Common Status Codes:**
+- `200 OK` - Request succeeded
+- `201 Created` - Resource created successfully
+- `401 Unauthorized` - Authentication required or failed
+- `404 Not Found` - Resource not found
+- `409 Conflict` - Resource already exists (duplicate)
+- `422 Unprocessable Entity` - Validation error
+
+**Validation Errors (422):**
+```json
+{
+  "detail": [
+    {
+      "type": "string_too_short",
+      "loc": ["body", "password"],
+      "msg": "String should have at least 8 characters",
+      "input": "short",
+      "ctx": {"min_length": 8}
+    }
+  ]
+}
+```
+
+### Security
+
+**Authentication Flow:**
+1. Client calls `POST /auth/login` with credentials
+2. Server validates and returns JWT token
+3. Client includes token in `Authorization: Bearer <token>` header
+4. Protected endpoints validate token via `get_current_user` dependency
+5. Dependency decodes JWT, verifies signature/expiration, fetches user
+6. Endpoint receives authenticated `User` object
+
+**Security Features:**
+- ✅ bcrypt password hashing (12 rounds)
+- ✅ JWT tokens with HMAC-SHA256 signing
+- ✅ Configurable token expiration (24h default)
+- ✅ HTTPBearer token extraction
+- ✅ Token signature verification
+- ✅ User existence validation on each request
+- ✅ Generic error messages (don't leak info)
+- ✅ CORS configurable for production
+
+### Testing
+
+**Automated Test Script:**
+```bash
+./scripts/test_api.sh
+```
+
+The test script validates:
+- ✅ Health check
+- ✅ User registration
+- ✅ Login and token generation
+- ✅ Protected endpoint access
+- ✅ Error handling (duplicates, invalid credentials, missing token, validation)
+
+**Manual Testing with Swagger UI:**
+1. Start server: `uv run python -m whati8 serve --reload`
+2. Open: http://localhost:8000/docs
+3. Click "Try it out" on endpoints
+4. For protected endpoints: Click "Authorize", paste token
+
+**LAN Access:**
+The server binds to `0.0.0.0` by default for LAN accessibility:
+- From server: http://localhost:8000
+- From LAN devices: http://192.168.1.11:8000 (replace with server IP)
+- **Firewall**: May need to open port: `sudo ufw allow 8000`
+
+### OpenAPI Documentation
+
+**Swagger UI** (Interactive): http://localhost:8000/docs
+- Try endpoints directly in browser
+- See request/response schemas
+- Test authentication flow
+- View example values
+
+**ReDoc** (Clean): http://localhost:8000/redoc
+- Beautiful, responsive documentation
+- Easy to read and navigate
+- Print-friendly
+
+**OpenAPI JSON** (Machine-readable): http://localhost:8000/openapi.json
+- Full API specification
+- For code generation tools
+- For API clients
+
+### Future Endpoints
+
+The authentication API establishes the pattern for future endpoints:
+
+**Food Management:**
+- `GET /foods/search?q=chicken` - Search foods with fuzzy matching
+- `GET /foods/{id}` - Get food details with nutrients
+- `POST /foods` - Create custom food (authenticated)
+
+**Food Logging:**
+- `POST /logs` - Log food consumption (authenticated)
+- `GET /logs?date=2026-02-07` - Get logs for date (authenticated)
+- `PUT /logs/{id}` - Update log (authenticated)
+- `DELETE /logs/{id}` - Delete log (authenticated)
+
+**Dashboard:**
+- `GET /dashboard/today` - Today's nutrition summary (authenticated)
+- `GET /dashboard/week` - Weekly trends (authenticated)
+
+**Goals & Meals:**
+- `GET /goals` - Get user goals (authenticated)
+- `POST /goals` - Create/update goal (authenticated)
+- `GET /meals` - Get meals (authenticated)
+- `POST /meals` - Create custom meal (authenticated)
+
+All future endpoints will:
+- Use service layer for business logic
+- Require authentication with `Depends(get_current_user)`
+- Use Pydantic schemas for validation
+- Follow consistent error handling patterns
+
+---
+
 ## Next Steps
 
 ### Immediate (Phase 1 Continuation)
 
-1. **REST API Endpoints** - Convert CLI to FastAPI routes
-   - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
-   - `GET /foods/search?q=<query>` with fuzzy matching
-   - `POST /logs`, `GET /logs`, `PUT /logs/{id}`, `DELETE /logs/{id}`
-
-2. **USDA Import Script** - Populate database
-   - CLI command: `python -m whati8.cli import-usda`
+1. **USDA Import Script** - Populate food database
+   - CLI command: `uv run python -m whati8 import-usda`
    - Bulk download USDA FoodData Central JSON
    - Parse and insert into foods + food_nutrients tables
+   - Initial import: ~50,000 foods with nutritional data
 
-3. **Additional Pydantic Schemas**
-   - Food request/response schemas
-   - FoodLog schemas
-   - Recipe schemas
-   - Goal and Meal management schemas
+2. **Food Search API** - Enable food lookup
+   - `GET /foods/search?q=<query>` with pg_trgm fuzzy matching
+   - `GET /foods/{id}` with full nutrient details
+   - Pydantic schemas: FoodResponse, FoodSearchResult
+   - Authentication required
 
-4. **Daily Dashboard API**
-   - `GET /dashboard/today` - Nutrition summary for current day
+3. **Food Logging API** - Track daily consumption
+   - `POST /logs` - Create food log entry
+   - `GET /logs?date=2026-02-07` - Get logs for specific date
+   - `PUT /logs/{id}` - Update log entry
+   - `DELETE /logs/{id}` - Delete log entry
+   - Pydantic schemas: FoodLogCreate, FoodLogUpdate, FoodLogResponse
+
+4. **Daily Dashboard API** - Nutrition summaries
+   - `GET /dashboard/today` - Current day nutrition totals
+   - `GET /dashboard/week` - Weekly trends
    - Calculate totals for each tracked nutrient
    - Compare against user goals
    - Group by meal categories
+
+5. **Goal & Meal Management API** - User customization
+   - `GET /goals`, `POST /goals`, `PUT /goals/{id}` - Manage user goals
+   - `GET /meals`, `POST /meals` - Standard + custom meals
+   - Pydantic schemas: UserGoalCreate, MealCreate
 
 ### Future Phases
 
