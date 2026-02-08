@@ -65,13 +65,32 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 - ✅ Key nutrient preview in search results (calories, protein, carbs, fat)
 - ✅ Complete nutrient data in detail endpoint
 
+**AI Food Resolution System** ⭐ *NEW*
+- ✅ Natural language food parsing with Claude AI
+- ✅ Pydantic schemas (FoodResolveRequest, ParsedFoodItem, FoodMatchOption, ResolvedFoodItem, FoodResolveResponse)
+- ✅ POST /foods/resolve - Parse text like "I had 2 eggs and toast for breakfast"
+- ✅ Tool calling for structured JSON extraction (quantity, unit, food name, confidence)
+- ✅ Automatic database matching with fuzzy search
+- ✅ Meal context detection (breakfast, lunch, dinner, snack)
+- ✅ Multi-option matching for user confirmation (top 3 matches per item)
+- ✅ Confidence scoring (0.0-1.0) based on input clarity
+- ✅ Comprehensive error handling (invalid input, API failures, rate limits)
+- ✅ Configurable model via ANTHROPIC_MODEL env var
+- ✅ Requires ANTHROPIC_API_KEY in environment
+- ✅ Cost: ~$0.001-0.003 per resolution request
+
 ### ⏭️ Next Steps (Phase 1 Continuation)
 
 1. **Food Logging API** - CRUD endpoints for daily consumption tracking
+   - Can use AI resolution results for one-tap logging
 2. **Dashboard API** - Daily/weekly nutrition summaries with goal tracking
 3. **Goal Management API** - CRUD endpoints for flexible nutrition goals
 4. **Meal Management API** - CRUD endpoints for custom meals
 5. **Recipe Management API** - CRUD endpoints for user recipes
+6. **AI Enhancements** (Future)
+   - Photo upload support with Claude Vision
+   - User preference learning for match ranking
+   - Recipe/dish detection ("chicken parmesan" → multiple ingredients)
 
 ---
 
@@ -701,6 +720,385 @@ curl "http://localhost:8000/foods/102" \
   "updated_at": "2026-02-07T16:19:33.678000"
 }
 ```
+
+---
+
+## AI Food Resolution System
+
+### Overview
+
+Natural language food parsing system using Claude AI to convert text like "I had 2 eggs and toast for breakfast" into structured food data ready for logging.
+
+### Key Features
+
+- **Natural Language Parsing**: Understands quantities, units, food names, and preparation methods
+- **Tool Calling**: Uses Claude's tool calling for guaranteed JSON schema compliance
+- **Database Matching**: Automatically matches parsed items against food database using fuzzy search
+- **Confidence Scoring**: AI assigns confidence (0.0-1.0) based on input clarity
+- **Meal Detection**: Automatically identifies meal context (breakfast, lunch, dinner, snack)
+- **Multi-Option Matching**: Returns top 3 database matches per item for user confirmation
+- **Error Handling**: Graceful handling of vague input, API failures, and rate limits
+
+### Components
+
+**1. Pydantic Schemas** (`whati8/schemas/food_resolver.py`)
+
+```python
+class FoodResolveRequest(BaseModel):
+    """Request to resolve natural language food input."""
+    text: str  # "I had 2 eggs and toast for breakfast"
+    meal_hint: str | None  # Optional: "breakfast", "lunch", "dinner", "snack"
+    max_matches_per_item: int = 3  # Top N database matches per item
+
+class ParsedFoodItem(BaseModel):
+    """Food item extracted by AI."""
+    food_name: str  # "egg", "toast"
+    quantity: float  # 2.0
+    unit: str  # "pieces", "oz", "g", "cup", etc.
+    original_text: str | None  # "2 eggs"
+    confidence: float  # 0.0-1.0 (0.9+ = clear, <0.7 = ambiguous)
+
+class FoodMatchOption(BaseModel):
+    """Database match for a parsed item."""
+    food_id: int
+    name: str
+    serving_size: float
+    unit: str
+    similarity_score: float  # 0.0-1.0 (fuzzy match score)
+    # Nutrient preview
+    calories: float | None
+    protein: float | None
+    carbs: float | None
+    fat: float | None
+    quantity_multiplier: float  # For unit conversion
+
+class ResolvedFoodItem(BaseModel):
+    """Parsed item + database matches."""
+    parsed_item: ParsedFoodItem
+    matches: list[FoodMatchOption]  # Top N matches
+    status: str  # "matched", "not_found", "ambiguous"
+
+class FoodResolveResponse(BaseModel):
+    """Complete resolution result."""
+    original_text: str
+    resolved_items: list[ResolvedFoodItem]
+    meal_context: MealContext | None  # Detected meal
+    overall_confidence: float  # Average confidence
+    ai_provider: str  # "anthropic"
+```
+
+**2. Service Layer** (`whati8/services/food_resolver.py`)
+
+```python
+class FoodResolverService:
+    """Service for AI-powered food resolution."""
+
+    @staticmethod
+    def parse_food_text(
+        text: str,
+        meal_hint: str | None = None
+    ) -> tuple[list[ParsedFoodItem], str | None]:
+        """Parse natural language with Claude AI tool calling."""
+        # Uses Claude 3.5 Sonnet with structured tool schema
+        # Returns (parsed items, detected meal name)
+
+    @staticmethod
+    async def match_food_in_database(
+        db: AsyncSession,
+        food_name: str,
+        max_results: int = 3
+    ) -> list[FoodMatchOption]:
+        """Fuzzy search database for matching foods."""
+        # Uses pg_trgm similarity (same as /foods/search)
+        # Returns top N matches with nutrients
+
+    @staticmethod
+    async def get_meal_by_name(
+        db: AsyncSession,
+        meal_name: str
+    ) -> Meal | None:
+        """Look up standard meal."""
+
+    @staticmethod
+    async def resolve_foods(
+        db: AsyncSession,
+        text: str,
+        meal_hint: str | None = None,
+        max_matches_per_item: int = 3
+    ) -> FoodResolveResponse:
+        """Main orchestrator: parse + match + package."""
+```
+
+**3. API Endpoint** (`whati8/api/routers/food.py`)
+
+**POST /foods/resolve** - Resolve natural language food input
+- Request body: `FoodResolveRequest`
+- Returns: `FoodResolveResponse`
+- Authentication required
+- Error codes:
+  - `400`: Input too vague or could not be parsed
+  - `401`: Authentication required
+  - `429`: AI service rate limit exceeded
+  - `500`: AI service error or configuration issue
+
+### System Prompt
+
+The AI is instructed to:
+- Standardize food names ("eggs" → "egg")
+- Convert word quantities to numbers ("two" → 2)
+- Standardize units (oz, g, kg, lb, cup, tbsp, tsp, ml, pieces, slices, serving)
+- Include preparation methods if mentioned ("scrambled eggs", "grilled chicken")
+- Set confidence based on clarity:
+  - **0.9-1.0**: Clear quantity and food ("2 eggs", "8oz chicken")
+  - **0.7-0.89**: Clear food, vague quantity ("some chicken", "a bowl of rice")
+  - **0.5-0.69**: Ambiguous food or quantity ("had a snack")
+  - **<0.5**: Very unclear
+- Estimate reasonable quantities when not explicit (confidence <0.8)
+- Detect meal context (breakfast, lunch, dinner, snack) if mentioned
+
+### Usage Examples
+
+**Example 1: Simple breakfast**
+
+Request:
+```json
+POST /foods/resolve
+{
+  "text": "I had 2 eggs and toast for breakfast"
+}
+```
+
+Response:
+```json
+{
+  "original_text": "I had 2 eggs and toast for breakfast",
+  "resolved_items": [
+    {
+      "parsed_item": {
+        "food_name": "egg",
+        "quantity": 2.0,
+        "unit": "pieces",
+        "original_text": "2 eggs",
+        "confidence": 0.95
+      },
+      "matches": [
+        {
+          "food_id": 1234,
+          "name": "Egg, whole, raw",
+          "serving_size": 50.0,
+          "unit": "g",
+          "similarity_score": 0.89,
+          "calories": 72.0,
+          "protein": 6.3,
+          "carbs": 0.4,
+          "fat": 4.8,
+          "quantity_multiplier": 1.0
+        },
+        // ... 2 more matches
+      ],
+      "status": "matched"
+    },
+    {
+      "parsed_item": {
+        "food_name": "toast",
+        "quantity": 2.0,
+        "unit": "slices",
+        "original_text": "toast",
+        "confidence": 0.85
+      },
+      "matches": [
+        {
+          "food_id": 5678,
+          "name": "Bread, white, toasted",
+          "serving_size": 25.0,
+          "unit": "g",
+          "similarity_score": 0.92,
+          "calories": 79.0,
+          "protein": 2.6,
+          "carbs": 14.7,
+          "fat": 1.0,
+          "quantity_multiplier": 1.0
+        },
+        // ... 2 more matches
+      ],
+      "status": "matched"
+    }
+  ],
+  "meal_context": {
+    "meal_id": 1,
+    "meal_name": "Breakfast"
+  },
+  "overall_confidence": 0.90,
+  "ai_provider": "anthropic"
+}
+```
+
+**Example 2: Measured dinner**
+
+Request:
+```json
+{
+  "text": "8oz grilled chicken breast with broccoli"
+}
+```
+
+Response:
+```json
+{
+  "original_text": "8oz grilled chicken breast with broccoli",
+  "resolved_items": [
+    {
+      "parsed_item": {
+        "food_name": "grilled chicken breast",
+        "quantity": 8.0,
+        "unit": "oz",
+        "confidence": 0.95
+      },
+      "matches": [
+        {"food_id": 1111, "name": "Chicken, breast, grilled", "similarity_score": 0.94, ...},
+        {"food_id": 1112, "name": "Chicken breast, cooked", "similarity_score": 0.88, ...},
+        {"food_id": 1113, "name": "Poultry, chicken, breast", "similarity_score": 0.82, ...}
+      ],
+      "status": "matched"
+    },
+    {
+      "parsed_item": {
+        "food_name": "broccoli",
+        "quantity": 1.0,  // AI estimated
+        "unit": "cup",
+        "confidence": 0.70  // Lower due to vague quantity
+      },
+      "matches": [
+        {"food_id": 2222, "name": "Broccoli, cooked", "similarity_score": 0.96, ...},
+        // ...
+      ],
+      "status": "matched"
+    }
+  ],
+  "meal_context": null,  // No meal mentioned
+  "overall_confidence": 0.83,
+  "ai_provider": "anthropic"
+}
+```
+
+**Example 3: Ambiguous input**
+
+Request:
+```json
+{
+  "text": "had some chicken and rice"
+}
+```
+
+Response:
+```json
+{
+  "overall_confidence": 0.68,  // Low confidence due to vague quantities
+  "resolved_items": [
+    {
+      "parsed_item": {
+        "food_name": "chicken",
+        "quantity": 3.0,  // AI estimated "some" as 3oz
+        "unit": "oz",
+        "confidence": 0.65
+      },
+      "matches": [
+        {"food_id": 1234, "name": "Chicken, raw", "similarity_score": 0.45, ...},
+        {"food_id": 1235, "name": "Chicken, cooked", "similarity_score": 0.44, ...},
+        {"food_id": 1236, "name": "Chicken breast", "similarity_score": 0.42, ...}
+      ],
+      "status": "ambiguous"
+    },
+    // ... similar for "rice"
+  ],
+  "meal_context": null,
+  "ai_provider": "anthropic"
+}
+```
+
+### Configuration
+
+**Environment Variables (`.env`):**
+```bash
+# Required
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional (defaults to claude-3-5-sonnet-20241022)
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+```
+
+### Cost Considerations
+
+**Claude 3.5 Sonnet Pricing** (as of 2026):
+- Input: ~$3 per million tokens
+- Output: ~$15 per million tokens
+
+**Typical Request:**
+- Input: ~400 tokens (system prompt + user input)
+- Output: ~150 tokens (structured JSON)
+- **Cost per request: ~$0.001-0.003**
+
+**Monthly Estimates:**
+- 100 users × 3 resolutions/day = 9,000 requests/month = **$9-27/month**
+- ~$0.09-0.27 per active user per month
+
+**Optimization Strategies:**
+- System prompt caching (reduces repeated input tokens)
+- Rate limiting per user (e.g., 20/day)
+- Future: Use Claude Haiku for simple inputs (10× cheaper)
+
+### Error Handling
+
+**ValueError** (400 Bad Request):
+- No food items could be extracted
+- Input too vague (e.g., "xyz", "food")
+- Solution: Ask user for more detail
+
+**anthropic.AuthenticationError** (500 Internal Server Error):
+- Invalid or missing ANTHROPIC_API_KEY
+- Solution: Check server configuration
+
+**anthropic.RateLimitError** (429 Too Many Requests):
+- AI service rate limit exceeded
+- Solution: Retry after delay, implement per-user rate limiting
+
+**anthropic.APIError** (500 Internal Server Error):
+- Generic AI service error
+- Solution: Log error, show user-friendly message
+
+### Testing
+
+**Python Test Script:**
+```bash
+uv run python scripts/test_food_resolver.py
+```
+
+**Bash Test Script:**
+```bash
+./scripts/test_food_resolver.sh
+```
+
+**Manual Testing:**
+1. Start server: `uv run python -m whati8 serve --reload`
+2. Login to get token: `curl -X POST http://localhost:8000/auth/login ...`
+3. Test endpoint:
+```bash
+curl -X POST http://localhost:8000/foods/resolve \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "I had 2 eggs and toast for breakfast"}'
+```
+4. Or use Swagger UI: http://localhost:8000/docs
+
+### Future Enhancements
+
+1. **Auto-logging shortcut** - `POST /foods/resolve-and-log` (skip confirmation step)
+2. **Photo upload** - Claude Vision for food identification from images
+3. **User preference learning** - Personalize match ranking based on history
+4. **Recipe resolution** - Detect multi-ingredient dishes ("chicken parmesan" → sauce + cheese + chicken)
+5. **Batch optimization** - Cache common parses, use Claude Haiku for simple inputs
+6. **Meal templates** - "Log my usual breakfast" shortcut
+7. **Nutrition preview** - Show calorie/macro totals before confirmation
 
 ---
 

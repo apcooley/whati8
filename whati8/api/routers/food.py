@@ -5,6 +5,7 @@ Provides endpoints for searching foods (with fuzzy matching) and
 retrieving detailed food information with nutrients.
 """
 
+from anthropic import APIError as AnthropicAPIError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,8 @@ from sqlalchemy.orm import selectinload
 from whati8.api.deps import get_current_user, get_db
 from whati8.models import Food, FoodNutrient, Nutrient, User
 from whati8.schemas.food import FoodResponse, FoodSearchResponse, FoodSearchResultItem
+from whati8.schemas.food_resolver import FoodResolveRequest, FoodResolveResponse
+from whati8.services.food_resolver import FoodResolverService
 
 router = APIRouter(prefix="/foods", tags=["foods"])
 
@@ -137,3 +140,63 @@ async def get_food(
         raise HTTPException(status_code=404, detail="Food not found")
 
     return food
+
+
+@router.post("/resolve", response_model=FoodResolveResponse)
+async def resolve_foods(
+    request: FoodResolveRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Resolve natural language food description to structured data.
+
+    Uses AI (Claude) to parse natural language input like "I had 2 eggs and toast"
+    and matches parsed items against the food database. Returns structured data
+    with multiple match options for user confirmation.
+
+    **Authentication required.**
+
+    **Requires ANTHROPIC_API_KEY in environment.**
+
+    Example inputs:
+    - "I had 2 eggs and toast for breakfast"
+    - "8oz grilled chicken breast with broccoli"
+    - "had some pasta and a salad for lunch"
+
+    Returns:
+    - Parsed food items (quantity, unit, confidence)
+    - Database matches for each item (top N ranked by similarity)
+    - Detected meal context (if mentioned)
+    - Overall confidence score
+    """
+    try:
+        response = await FoodResolverService.resolve_foods(
+            db=db,
+            text=request.text,
+            meal_hint=request.meal_hint,
+            max_matches_per_item=request.max_matches_per_item,
+        )
+        return response
+
+    except ValueError as e:
+        # Parsing errors (input too vague, no items extracted)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except AnthropicAPIError as e:
+        # AI service errors
+        if "authentication" in str(e).lower():
+            raise HTTPException(
+                status_code=500,
+                detail="AI service authentication failed. Check server configuration.",
+            )
+        elif "rate_limit" in str(e).lower():
+            raise HTTPException(
+                status_code=429,
+                detail="AI service rate limit exceeded. Please try again later.",
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"AI service error: {str(e)}",
+            )

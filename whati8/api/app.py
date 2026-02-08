@@ -1,10 +1,12 @@
 """FastAPI application factory for whati8."""
+from anthropic import APIError as AnthropicAPIError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from jose.exceptions import JWTError
 from sqlalchemy.exc import IntegrityError
 
 from whati8.api.exceptions import (
+    anthropic_error_handler,
     http_exception_handler,
     integrity_error_handler,
     jwt_exception_handler,
@@ -49,6 +51,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(JWTError, jwt_exception_handler)
     app.add_exception_handler(IntegrityError, integrity_error_handler)
+    app.add_exception_handler(AnthropicAPIError, anthropic_error_handler)
 
     # 4. Include routers
     app.include_router(auth_router, prefix="/auth", tags=["authentication"])

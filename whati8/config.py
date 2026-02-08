@@ -46,6 +46,10 @@ class Settings(BaseSettings):
         default="",
         description="Anthropic API key for Claude integration",
     )
+    anthropic_model: str = Field(
+        default="claude-3-5-sonnet-20241022",
+        description="Anthropic model ID for food parsing",
+    )
     openai_api_key: str = Field(
         default="",
         description="OpenAI API key (alternative to Anthropic)",
