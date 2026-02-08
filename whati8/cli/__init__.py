@@ -1,5 +1,5 @@
 """CLI commands for whati8."""
-import asyncio
+
 import subprocess
 import sys
 from pathlib import Path
@@ -39,7 +39,12 @@ def serve(host: str, port: int, reload: bool):
 
 
 @cli.command(name="import-usda")
-@click.option("--limit", "-l", type=int, help="Limit number of foods to import per dataset (for testing)")
+@click.option(
+    "--limit",
+    "-l",
+    type=int,
+    help="Limit number of foods to import per dataset (for testing)",
+)
 def import_usda(limit: int | None):
     """Import USDA Food Data Central bulk data into database.
 
@@ -50,7 +55,9 @@ def import_usda(limit: int | None):
         uv run python -m whati8 import-usda           # Full import
         uv run python -m whati8 import-usda --limit 100  # Test with 100 foods
     """
-    script_path = Path(__file__).parent.parent.parent / "scripts" / "import_usda_data.py"
+    script_path = (
+        Path(__file__).parent.parent.parent / "scripts" / "import_usda_data.py"
+    )
 
     cmd = [sys.executable, str(script_path)]
     if limit:

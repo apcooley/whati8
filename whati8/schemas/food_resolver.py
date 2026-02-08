@@ -1,32 +1,54 @@
 """Pydantic schemas for AI-powered food resolution."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field, field_validator
+
+from whati8.constants import (
+    AI_INPUT_MAX_LENGTH,
+    AI_MAX_MATCHES_LIMIT,
+    AI_MAX_MATCHES_PER_ITEM,
+    AI_MEAL_HINT_MAX_LENGTH,
+)
+from whati8.schemas.base import BaseORMModel, BaseRequestModel
 
 
-class FoodResolveRequest(BaseModel):
+class FoodResolveRequest(BaseRequestModel):
     """Request to resolve natural language food input."""
 
     text: str = Field(
         ...,
         min_length=1,
-        max_length=500,
+        max_length=AI_INPUT_MAX_LENGTH,
         description="Natural language food description",
         examples=["I had 2 eggs and toast for breakfast"],
     )
     meal_hint: str | None = Field(
         None,
+        min_length=1,
+        max_length=AI_MEAL_HINT_MAX_LENGTH,
+        pattern=r"^(breakfast|lunch|dinner|snack|brunch|tea|other)$",
         description="Optional meal context hint",
         examples=["breakfast", "lunch", "dinner", "snack"],
     )
     max_matches_per_item: int = Field(
-        3,
+        AI_MAX_MATCHES_PER_ITEM,
         ge=1,
-        le=10,
+        le=AI_MAX_MATCHES_LIMIT,
         description="Maximum database matches to return per food item",
     )
 
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, v: str) -> str:
+        """Validate text field contains meaningful content."""
+        v = v.strip()
+        if not v:
+            raise ValueError("Food text cannot be empty or only whitespace")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Food text must contain at least one letter")
+        return v
 
-class ParsedFoodItem(BaseModel):
+
+class ParsedFoodItem(BaseORMModel):
     """Food item extracted from natural language by AI."""
 
     food_name: str = Field(
@@ -51,10 +73,8 @@ class ParsedFoodItem(BaseModel):
         examples=[0.95, 0.75],
     )
 
-    model_config = {"from_attributes": True}
 
-
-class FoodMatchOption(BaseModel):
+class FoodMatchOption(BaseORMModel):
     """Database match option for a parsed food item."""
 
     food_id: int = Field(..., description="Database food ID")
@@ -76,10 +96,8 @@ class FoodMatchOption(BaseModel):
         description="Multiplier to convert parsed quantity to serving size",
     )
 
-    model_config = {"from_attributes": True}
 
-
-class ResolvedFoodItem(BaseModel):
+class ResolvedFoodItem(BaseORMModel):
     """Resolved food item with parsed data and database matches."""
 
     parsed_item: ParsedFoodItem = Field(
@@ -94,10 +112,8 @@ class ResolvedFoodItem(BaseModel):
         examples=["matched", "not_found", "ambiguous"],
     )
 
-    model_config = {"from_attributes": True}
 
-
-class MealContext(BaseModel):
+class MealContext(BaseORMModel):
     """Detected meal context from input."""
 
     meal_id: int | None = Field(None, description="Standard meal ID from database")
@@ -105,19 +121,15 @@ class MealContext(BaseModel):
         None, description="Meal name", examples=["Breakfast", "Lunch", "Dinner"]
     )
 
-    model_config = {"from_attributes": True}
 
-
-class FoodResolveResponse(BaseModel):
+class FoodResolveResponse(BaseORMModel):
     """Response with resolved food items and matches."""
 
     original_text: str = Field(..., description="Original user input")
     resolved_items: list[ResolvedFoodItem] = Field(
         ..., description="Parsed and matched food items"
     )
-    meal_context: MealContext | None = Field(
-        None, description="Detected meal context"
-    )
+    meal_context: MealContext | None = Field(None, description="Detected meal context")
     overall_confidence: float = Field(
         ...,
         ge=0.0,
@@ -125,5 +137,3 @@ class FoodResolveResponse(BaseModel):
         description="Overall confidence score (average of all items)",
     )
     ai_provider: str = Field(..., description="AI service used", examples=["anthropic"])
-
-    model_config = {"from_attributes": True}

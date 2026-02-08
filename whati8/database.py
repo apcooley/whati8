@@ -19,13 +19,8 @@ from sqlalchemy.ext.asyncio import (
 from whati8.config import settings
 
 # Create async engine with asyncpg driver
-# Convert postgresql:// to postgresql+asyncpg://
-database_url = str(settings.database_url)
-if database_url.startswith("postgresql://"):
-    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
 engine: AsyncEngine = create_async_engine(
-    database_url,
+    settings.get_async_database_url(),
     echo=settings.debug,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,

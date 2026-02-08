@@ -29,9 +29,8 @@ from sqlalchemy import select
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from whati8.config import settings
-from whati8.database import AsyncSessionLocal
-from whati8.models import Food, FoodNutrient, Nutrient
+from whati8.database import AsyncSessionLocal  # noqa: E402
+from whati8.models import Food, FoodNutrient, Nutrient  # noqa: E402
 
 
 # USDA Nutrient ID to our standard nutrient name mapping
@@ -107,7 +106,7 @@ class USDAImporter:
 
         print(f"  Downloading {filename}...")
         print(f"    URL: {url}")
-        print(f"    Size: ~50-100 MB, may take 1-2 minutes...")
+        print("    Size: ~50-100 MB, may take 1-2 minutes...")
 
         with httpx.Client(timeout=300.0) as client:
             response = client.get(url, follow_redirects=True)
@@ -146,7 +145,9 @@ class USDAImporter:
         print(f"  ✓ Extracted: {json_file.name}")
         return json_file
 
-    def parse_food_item(self, food_data: dict[str, Any]) -> tuple[Food, list[FoodNutrient]]:
+    def parse_food_item(
+        self, food_data: dict[str, Any]
+    ) -> tuple[Food, list[FoodNutrient]]:
         """Parse USDA food JSON into Food and FoodNutrient objects."""
         # Extract food details
         fdc_id = food_data.get("fdcId")
@@ -224,7 +225,9 @@ class USDAImporter:
 
         if self.limit:
             foods_data = foods_data[: self.limit]
-            print(f"  ⚠ Limiting import to {self.limit} foods (total available: {total_foods})")
+            print(
+                f"  ⚠ Limiting import to {self.limit} foods (total available: {total_foods})"
+            )
         else:
             print(f"  Found {total_foods} foods to import")
 
@@ -236,7 +239,11 @@ class USDAImporter:
                 batch_num = i // batch_size + 1
                 total_batches = (len(foods_data) + batch_size - 1) // batch_size
 
-                print(f"  Processing batch {batch_num}/{total_batches}...", end="", flush=True)
+                print(
+                    f"  Processing batch {batch_num}/{total_batches}...",
+                    end="",
+                    flush=True,
+                )
 
                 for food_data in batch:
                     try:
@@ -264,12 +271,16 @@ class USDAImporter:
                         self.stats["foods_created"] += 1
 
                     except Exception as e:
-                        print(f"\n  ✗ Error processing food {food_data.get('fdcId')}: {e}")
+                        print(
+                            f"\n  ✗ Error processing food {food_data.get('fdcId')}: {e}"
+                        )
                         continue
 
                 # Commit batch
                 await db.commit()
-                print(f" ✓ ({self.stats['foods_created']} created, {self.stats['foods_skipped']} skipped)")
+                print(
+                    f" ✓ ({self.stats['foods_created']} created, {self.stats['foods_skipped']} skipped)"
+                )
 
     async def run(self):
         """Run the full import process."""

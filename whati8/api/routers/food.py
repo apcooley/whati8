@@ -6,16 +6,27 @@ retrieving detailed food information with nutrients.
 """
 
 from anthropic import APIError as AnthropicAPIError
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from whati8.api.deps import get_current_user, get_db
-from whati8.models import Food, FoodNutrient, Nutrient, User
+from whati8.config import settings
+from whati8.constants import (
+    DEFAULT_PAGE_OFFSET,
+    FOOD_SEARCH_DEFAULT_LIMIT,
+    FOOD_SEARCH_MAX_LIMIT,
+    FOOD_SEARCH_SIMILARITY_THRESHOLD,
+)
+from whati8.models import Food, FoodNutrient, User
 from whati8.schemas.food import FoodResponse, FoodSearchResponse, FoodSearchResultItem
 from whati8.schemas.food_resolver import FoodResolveRequest, FoodResolveResponse
 from whati8.services.food_resolver import FoodResolverService
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/foods", tags=["foods"])
 
@@ -23,8 +34,15 @@ router = APIRouter(prefix="/foods", tags=["foods"])
 @router.get("/search", response_model=FoodSearchResponse)
 async def search_foods(
     q: str = Query(..., min_length=2, description="Search query"),
-    limit: int = Query(20, ge=1, le=100, description="Results per page"),
-    offset: int = Query(0, ge=0, description="Result offset for pagination"),
+    limit: int = Query(
+        FOOD_SEARCH_DEFAULT_LIMIT,
+        ge=1,
+        le=FOOD_SEARCH_MAX_LIMIT,
+        description="Results per page",
+    ),
+    offset: int = Query(
+        DEFAULT_PAGE_OFFSET, ge=0, description="Result offset for pagination"
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -43,14 +61,15 @@ async def search_foods(
     """
     # Use pg_trgm similarity search for fuzzy matching
     # similarity() returns a value between 0 and 1 (higher = better match)
-    similarity_threshold = 0.1  # Lower threshold for broader matches
+    similarity_threshold = FOOD_SEARCH_SIMILARITY_THRESHOLD
 
-    # Build query with similarity scoring
+    # Build query with similarity scoring and eager load nutrients (prevents N+1)
     query = (
         select(
             Food,
             func.similarity(Food.name, q).label("similarity_score"),
         )
+        .options(selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient))
         .where(func.similarity(Food.name, q) > similarity_threshold)
         .order_by(func.similarity(Food.name, q).desc())
         .offset(offset)
@@ -61,28 +80,30 @@ async def search_foods(
     rows = result.all()
 
     # Count total results
-    count_query = select(func.count()).select_from(Food).where(
-        func.similarity(Food.name, q) > similarity_threshold
+    count_query = (
+        select(func.count())
+        .select_from(Food)
+        .where(func.similarity(Food.name, q) > similarity_threshold)
     )
     total = await db.scalar(count_query) or 0
 
-    # Get nutrient IDs for quick lookups
-    nutrient_names = ["Calories", "Protein", "Total Carbohydrates", "Total Fat"]
-    nutrient_result = await db.execute(
-        select(Nutrient).where(Nutrient.name.in_(nutrient_names))
-    )
-    nutrient_map = {n.name: n.id for n in nutrient_result.scalars()}
-
-    # Build search result items
+    # Build search result items using already-loaded relationships
     search_results = []
     for food, similarity_score in rows:
-        # Get key nutrients for preview
-        nutrient_query = select(FoodNutrient).where(
-            FoodNutrient.food_id == food.id,
-            FoodNutrient.nutrient_id.in_(nutrient_map.values()),
-        )
-        nutrients_result = await db.execute(nutrient_query)
-        nutrients = {fn.nutrient_id: fn.amount_per_serving for fn in nutrients_result.scalars()}
+        # Extract key nutrients from already-loaded relationships (no more queries!)
+        nutrients_map = {}
+        for fn in food.food_nutrients:  # Already loaded via selectinload
+            if fn.nutrient:  # Already loaded via selectinload
+                nutrient_name = fn.nutrient.name
+                # Map to result field names
+                if "Calories" in nutrient_name or "Energy" in nutrient_name:
+                    nutrients_map["calories"] = fn.amount_per_serving
+                elif "Protein" in nutrient_name:
+                    nutrients_map["protein"] = fn.amount_per_serving
+                elif "Carbohydrate" in nutrient_name:
+                    nutrients_map["carbs"] = fn.amount_per_serving
+                elif "Fat" in nutrient_name or "lipid" in nutrient_name.lower():
+                    nutrients_map["fat"] = fn.amount_per_serving
 
         result_item = FoodSearchResultItem(
             id=food.id,
@@ -92,10 +113,10 @@ async def search_foods(
             unit=food.unit,
             usda_fdc_id=food.usda_fdc_id,
             similarity=float(similarity_score),
-            calories=nutrients.get(nutrient_map.get("Calories")),
-            protein=nutrients.get(nutrient_map.get("Protein")),
-            carbs=nutrients.get(nutrient_map.get("Total Carbohydrates")),
-            fat=nutrients.get(nutrient_map.get("Total Fat")),
+            calories=nutrients_map.get("calories"),
+            protein=nutrients_map.get("protein"),
+            carbs=nutrients_map.get("carbs"),
+            fat=nutrients_map.get("fat"),
         )
         search_results.append(result_item)
 
@@ -127,9 +148,7 @@ async def get_food(
     # Load food with all nutrients eagerly
     query = (
         select(Food)
-        .options(
-            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient)
-        )
+        .options(selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient))
         .where(Food.id == food_id)
     )
 
@@ -143,7 +162,9 @@ async def get_food(
 
 
 @router.post("/resolve", response_model=FoodResolveResponse)
+@limiter.limit(f"{settings.rate_limit_ai_per_minute}/minute")
 async def resolve_foods(
+    http_request: Request,
     request: FoodResolveRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

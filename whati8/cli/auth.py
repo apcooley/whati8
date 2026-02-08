@@ -1,4 +1,5 @@
 """CLI commands for authentication."""
+
 import asyncio
 import click
 from datetime import datetime, timedelta
@@ -27,7 +28,7 @@ async def register_async(username: str, email: str, password: str):
 
             # Display result
             user_response = UserResponse.model_validate(user)
-            click.echo(f"\n✓ User created successfully!")
+            click.echo("\n✓ User created successfully!")
             click.echo(f"  ID: {user_response.id}")
             click.echo(f"  Username: {user_response.username}")
             click.echo(f"  Email: {user_response.email}")
@@ -53,11 +54,11 @@ async def login_async(login: str, password: str):
         expires_at = datetime.utcnow() + timedelta(hours=settings.jwt_expiration_hours)
 
         # Display result
-        click.echo(f"\n✓ Login successful!")
+        click.echo("\n✓ Login successful!")
         click.echo(f"  User: {user.username}")
         click.echo(f"  Token: {token}")
         click.echo(f"  Expires: {expires_at} UTC")
-        click.echo(f"\n  Use this token for authenticated requests:")
+        click.echo("\n  Use this token for authenticated requests:")
         click.echo(f"  Authorization: Bearer {token}")
 
 
@@ -79,7 +80,7 @@ async def whoami_async(token: str):
             user_response = UserResponse.model_validate(user)
             expires_at = datetime.fromtimestamp(payload.exp)
 
-            click.echo(f"\n✓ Token valid!")
+            click.echo("\n✓ Token valid!")
             click.echo(f"  User ID: {user_response.id}")
             click.echo(f"  Username: {user_response.username}")
             click.echo(f"  Email: {user_response.email}")

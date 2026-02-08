@@ -1,4 +1,5 @@
 """Authentication endpoints for whati8 API."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +14,7 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
-    user_data: UserCreate,
-    db: AsyncSession = Depends(get_db)
+    user_data: UserCreate, db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
     """
     Register a new user account.
@@ -32,10 +32,7 @@ async def register(
 
 
 @router.post("/login", response_model=Token)
-async def login(
-    credentials: UserLogin,
-    db: AsyncSession = Depends(get_db)
-) -> Token:
+async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)) -> Token:
     """
     Authenticate and receive JWT access token.
 
@@ -47,31 +44,25 @@ async def login(
     Raises 401 if credentials invalid.
     """
     user = await AuthService.authenticate_user(
-        db,
-        credentials.login,
-        credentials.password
+        db, credentials.login, credentials.password
     )
 
     if not user:
         raise HTTPException(
             status_code=401,
             detail="Incorrect username/email or password",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     access_token = AuthService.create_access_token(user.id)
     expires_in = settings.jwt_expiration_hours * 3600  # Convert to seconds
 
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=expires_in
-    )
+    return Token(access_token=access_token, token_type="bearer", expires_in=expires_in)
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> UserResponse:
     """
     Get current authenticated user's information.

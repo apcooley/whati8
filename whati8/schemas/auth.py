@@ -1,40 +1,52 @@
 """Authentication schemas for request/response validation."""
+
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import EmailStr, Field
+
+from whati8.constants import (
+    PASSWORD_MIN_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH,
+)
+from whati8.schemas.base import BaseORMModel, BaseRequestModel
 
 
-class UserCreate(BaseModel):
+class UserCreate(BaseRequestModel):
     """Schema for user registration."""
-    username: str = Field(..., min_length=3, max_length=50)
+
+    username: str = Field(
+        ..., min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH
+    )
     email: EmailStr
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=PASSWORD_MIN_LENGTH)
 
 
-class UserLogin(BaseModel):
+class UserLogin(BaseRequestModel):
     """Schema for user login (username or email + password)."""
+
     login: str  # Can be username or email
     password: str
 
 
-class UserResponse(BaseModel):
+class UserResponse(BaseORMModel):
     """Schema for user response (no password)."""
+
     id: int
     username: str
     email: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True  # SQLAlchemy 2.0 compatibility
 
-
-class Token(BaseModel):
+class Token(BaseORMModel):
     """Schema for JWT token response."""
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int  # Seconds until expiration
 
 
-class TokenPayload(BaseModel):
+class TokenPayload(BaseORMModel):
     """Schema for JWT token payload."""
+
     sub: int  # User ID (subject)
     exp: int  # Expiration timestamp

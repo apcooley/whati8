@@ -28,7 +28,9 @@ class Nutrient(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    unit: Mapped[str] = mapped_column(String(20), nullable=False)  # g, mg, kcal, points, etc.
+    unit: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # g, mg, kcal, points, etc.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # NULL for standard nutrients, set for user-defined nutrients

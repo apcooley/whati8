@@ -5,8 +5,10 @@ Loads environment variables from .env file using Pydantic Settings.
 All required variables are validated on startup.
 """
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from whati8.constants import JWT_MIN_SECRET_LENGTH, JWT_MIN_UNIQUE_CHARS
 
 
 class Settings(BaseSettings):
@@ -28,8 +30,8 @@ class Settings(BaseSettings):
     # Authentication
     jwt_secret: str = Field(
         ...,
-        min_length=32,
-        description="Secret key for JWT token signing (min 32 chars)",
+        min_length=JWT_MIN_SECRET_LENGTH,
+        description=f"Secret key for JWT token signing (min {JWT_MIN_SECRET_LENGTH} chars)",
     )
     jwt_algorithm: str = Field(
         default="HS256",
@@ -65,6 +67,30 @@ class Settings(BaseSettings):
         description="Logging level (debug, info, warning, error, critical)",
     )
 
+    # CORS Configuration
+    allowed_origins: list[str] = Field(
+        default=["http://localhost:3000", "http://localhost:5173"],
+        description="CORS allowed origins (comma-separated in env)",
+    )
+
+    # Rate Limiting
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Enable rate limiting",
+    )
+    rate_limit_per_minute: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="General API rate limit per minute",
+    )
+    rate_limit_ai_per_minute: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="AI endpoint rate limit per minute",
+    )
+
     # Database connection pool settings
     db_pool_size: int = Field(
         default=20,
@@ -90,6 +116,62 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        """Validate JWT secret strength."""
+        if len(v) < JWT_MIN_SECRET_LENGTH:
+            raise ValueError(
+                f"JWT secret must be at least {JWT_MIN_SECRET_LENGTH} characters"
+            )
+
+        unique_chars = len(set(v))
+        if unique_chars < JWT_MIN_UNIQUE_CHARS:
+            raise ValueError(
+                f"JWT secret must have at least {JWT_MIN_UNIQUE_CHARS} unique characters. "
+                "Use a cryptographically random string."
+            )
+
+        if v == v[0] * len(v):
+            raise ValueError("JWT secret cannot be all the same character")
+
+        return v
+
+    @field_validator("anthropic_api_key")
+    @classmethod
+    def validate_anthropic_key(cls, v: str) -> str:
+        """Validate Anthropic API key format."""
+        if v and not v.startswith("sk-ant-"):
+            raise ValueError(
+                "ANTHROPIC_API_KEY must start with 'sk-ant-' "
+                "(get key from https://console.anthropic.com/)"
+            )
+        return v
+
+    def get_async_database_url(self) -> str:
+        """
+        Get async-compatible database URL.
+
+        Converts postgresql:// to postgresql+asyncpg:// for SQLAlchemy async engine.
+
+        Returns:
+            Async-compatible database URL string
+
+        Raises:
+            ValueError: If database URL format is invalid
+        """
+        url = str(self.database_url)
+
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif not url.startswith("postgresql+asyncpg://"):
+            raise ValueError(
+                f"Invalid database URL format: {url}. "
+                "Expected postgresql:// or postgresql+asyncpg://"
+            )
+
+        return url
 
 
 # Global settings instance

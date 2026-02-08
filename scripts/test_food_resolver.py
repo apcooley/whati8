@@ -8,11 +8,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from whati8.database import AsyncSessionLocal
-from whati8.services.auth import AuthService
 from whati8.services.food_resolver import FoodResolverService
-from whati8.schemas.auth import UserCreate
 
 
 async def test_food_resolver():
@@ -28,28 +25,35 @@ async def test_food_resolver():
             response = await FoodResolverService.resolve_foods(
                 db=db,
                 text="I had 2 eggs and toast for breakfast",
-                max_matches_per_item=3
+                max_matches_per_item=3,
             )
 
-            print(f"✓ Parsed successfully")
+            print("✓ Parsed successfully")
             print(f"  Overall confidence: {response.overall_confidence}")
             print(f"  Resolved items: {len(response.resolved_items)}")
-            print(f"  Meal context: {response.meal_context.meal_name if response.meal_context else 'None'}")
+            print(
+                f"  Meal context: {response.meal_context.meal_name if response.meal_context else 'None'}"
+            )
             print()
 
             for i, item in enumerate(response.resolved_items, 1):
                 print(f"  Item {i}: {item.parsed_item.food_name}")
-                print(f"    Quantity: {item.parsed_item.quantity} {item.parsed_item.unit}")
+                print(
+                    f"    Quantity: {item.parsed_item.quantity} {item.parsed_item.unit}"
+                )
                 print(f"    Confidence: {item.parsed_item.confidence}")
                 print(f"    Status: {item.status}")
                 print(f"    Matches: {len(item.matches)}")
                 if item.matches:
                     for match in item.matches[:2]:  # Show top 2
-                        print(f"      - {match.name} (similarity: {match.similarity_score})")
+                        print(
+                            f"      - {match.name} (similarity: {match.similarity_score})"
+                        )
                 print()
         except Exception as e:
             print(f"❌ Error: {e}\n")
             import traceback
+
             traceback.print_exc()
             return
 
@@ -61,26 +65,31 @@ async def test_food_resolver():
             response = await FoodResolverService.resolve_foods(
                 db=db,
                 text="8oz grilled chicken breast with broccoli",
-                max_matches_per_item=3
+                max_matches_per_item=3,
             )
 
-            print(f"✓ Parsed successfully")
+            print("✓ Parsed successfully")
             print(f"  Overall confidence: {response.overall_confidence}")
             print(f"  Resolved items: {len(response.resolved_items)}")
             print()
 
             for i, item in enumerate(response.resolved_items, 1):
                 print(f"  Item {i}: {item.parsed_item.food_name}")
-                print(f"    Quantity: {item.parsed_item.quantity} {item.parsed_item.unit}")
+                print(
+                    f"    Quantity: {item.parsed_item.quantity} {item.parsed_item.unit}"
+                )
                 print(f"    Confidence: {item.parsed_item.confidence}")
                 print(f"    Status: {item.status}")
                 print(f"    Matches: {len(item.matches)}")
                 if item.matches:
-                    print(f"      Top match: {item.matches[0].name} (similarity: {item.matches[0].similarity_score})")
+                    print(
+                        f"      Top match: {item.matches[0].name} (similarity: {item.matches[0].similarity_score})"
+                    )
                 print()
         except Exception as e:
             print(f"❌ Error: {e}\n")
             import traceback
+
             traceback.print_exc()
             return
 
@@ -90,25 +99,28 @@ async def test_food_resolver():
 
         try:
             response = await FoodResolverService.resolve_foods(
-                db=db,
-                text="had some chicken and rice",
-                max_matches_per_item=3
+                db=db, text="had some chicken and rice", max_matches_per_item=3
             )
 
-            print(f"✓ Parsed successfully")
+            print("✓ Parsed successfully")
             print(f"  Overall confidence: {response.overall_confidence}")
             print(f"  Resolved items: {len(response.resolved_items)}")
             print()
 
             for i, item in enumerate(response.resolved_items, 1):
                 print(f"  Item {i}: {item.parsed_item.food_name}")
-                print(f"    Quantity: {item.parsed_item.quantity} {item.parsed_item.unit}")
-                print(f"    Confidence: {item.parsed_item.confidence} (expected <0.7 for vague input)")
+                print(
+                    f"    Quantity: {item.parsed_item.quantity} {item.parsed_item.unit}"
+                )
+                print(
+                    f"    Confidence: {item.parsed_item.confidence} (expected <0.7 for vague input)"
+                )
                 print(f"    Status: {item.status}")
                 print()
         except Exception as e:
             print(f"❌ Error: {e}\n")
             import traceback
+
             traceback.print_exc()
             return
 
@@ -118,16 +130,15 @@ async def test_food_resolver():
 
         try:
             response = await FoodResolverService.resolve_foods(
-                db=db,
-                text="xyz",
-                max_matches_per_item=3
+                db=db, text="xyz", max_matches_per_item=3
             )
-            print(f"⚠ Should have raised an error for vague input")
+            print("⚠ Should have raised an error for vague input")
         except ValueError as e:
             print(f"✓ Correctly raised ValueError: {e}\n")
         except Exception as e:
             print(f"❌ Unexpected error: {e}\n")
             import traceback
+
             traceback.print_exc()
 
     print("\n=== All test cases completed ===")

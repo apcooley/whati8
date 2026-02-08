@@ -65,7 +65,12 @@ class FoodLog(Base, TimestampMixin):
     # Indexes
     __table_args__ = (
         # Composite index for user's recent food logs (most common query)
-        Index("ix_food_logs_user_id_logged_at", "user_id", "logged_at", postgresql_using="btree"),
+        Index(
+            "ix_food_logs_user_id_logged_at",
+            "user_id",
+            "logged_at",
+            postgresql_using="btree",
+        ),
     )
 
     def __repr__(self) -> str:

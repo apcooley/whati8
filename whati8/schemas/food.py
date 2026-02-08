@@ -6,10 +6,12 @@ Defines request/response schemas for food search and retrieval.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from whati8.schemas.base import BaseORMModel
 
 
-class NutrientResponse(BaseModel):
+class NutrientResponse(BaseORMModel):
     """Nutrient information in a food response."""
 
     id: int
@@ -17,19 +19,15 @@ class NutrientResponse(BaseModel):
     unit: str
     description: str | None = None
 
-    model_config = {"from_attributes": True}
 
-
-class FoodNutrientResponse(BaseModel):
+class FoodNutrientResponse(BaseORMModel):
     """Nutrient amount in a food."""
 
     nutrient: NutrientResponse
     amount_per_serving: float = Field(..., description="Amount per serving")
 
-    model_config = {"from_attributes": True}
 
-
-class FoodResponse(BaseModel):
+class FoodResponse(BaseORMModel):
     """Full food details with nutrients."""
 
     id: int
@@ -48,10 +46,8 @@ class FoodResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
 
-
-class FoodSearchResultItem(BaseModel):
+class FoodSearchResultItem(BaseORMModel):
     """Single food item in search results."""
 
     id: int
@@ -73,10 +69,8 @@ class FoodSearchResultItem(BaseModel):
     carbs: float | None = None
     fat: float | None = None
 
-    model_config = {"from_attributes": True}
 
-
-class FoodSearchResponse(BaseModel):
+class FoodSearchResponse(BaseORMModel):
     """Paginated food search results."""
 
     query: str = Field(..., description="Search query")
@@ -84,5 +78,3 @@ class FoodSearchResponse(BaseModel):
     total: int = Field(..., description="Total results found")
     limit: int = Field(..., description="Results per page")
     offset: int = Field(..., description="Result offset")
-
-    model_config = {"from_attributes": True}

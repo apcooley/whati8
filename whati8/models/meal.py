@@ -49,5 +49,7 @@ class Meal(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        user_str = f", user_id={self.created_by_user_id}" if self.created_by_user_id else ""
+        user_str = (
+            f", user_id={self.created_by_user_id}" if self.created_by_user_id else ""
+        )
         return f"<Meal(id={self.id}, name='{self.name}'{user_str})>"

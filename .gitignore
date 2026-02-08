@@ -26,3 +26,5 @@ wheels/
 *.swo
 *~
 /data/
+/CODE_REVIEW.md
+/TEST_SUMMARY.md

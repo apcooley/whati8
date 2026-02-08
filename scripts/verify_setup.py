@@ -21,7 +21,8 @@ def test_config():
     print("Testing configuration...")
     try:
         from whati8.config import settings
-        print(f"  ✓ Settings loaded")
+
+        print("  ✓ Settings loaded")
         print(f"    - Database URL: {str(settings.database_url)[:30]}...")
         print(f"    - Debug mode: {settings.debug}")
         print(f"    - Pool size: {settings.db_pool_size}")
@@ -46,7 +47,7 @@ def test_models():
         )
 
         models = [User, Food, FoodLog, Recipe, RecipeIngredient, UserGoal]
-        print(f"  ✓ All models imported successfully")
+        print("  ✓ All models imported successfully")
         print(f"    - {len(models)} models defined")
         print(f"    - {len(Base.metadata.tables)} tables in metadata")
 
@@ -59,6 +60,7 @@ def test_models():
     except Exception as e:
         print(f"  ✗ Model import failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -72,18 +74,19 @@ def test_database():
 
         async def check_connection():
             from sqlalchemy import text
+
             async with engine.connect() as conn:
                 result = await conn.execute(text("SELECT version()"))
                 version = result.scalar()
                 return version
 
         version = asyncio.run(check_connection())
-        print(f"  ✓ Database connection successful")
+        print("  ✓ Database connection successful")
         print(f"    - PostgreSQL version: {version.split(',')[0]}")
         return True
     except Exception as e:
         print(f"  ⚠ Database connection unavailable: {e}")
-        print(f"    (This is OK if database hasn't been set up yet)")
+        print("    (This is OK if database hasn't been set up yet)")
         return None  # Not a failure, just not set up
 
 
@@ -105,13 +108,13 @@ def test_alembic():
         try:
             command.current(alembic_cfg)
             current = output.getvalue()
-            print(f"  ✓ Alembic configured")
+            print("  ✓ Alembic configured")
             if current.strip():
                 print(f"    - Current revision: {current.strip()}")
             else:
-                print(f"    - No migrations applied yet")
+                print("    - No migrations applied yet")
         except Exception:
-            print(f"  ✓ Alembic configured (database not initialized)")
+            print("  ✓ Alembic configured (database not initialized)")
 
         # Check migrations directory
         versions_path = project_root / "alembic" / "versions"

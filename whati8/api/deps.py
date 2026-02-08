@@ -1,4 +1,5 @@
 """Shared dependencies for whati8 API."""
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose.exceptions import JWTError
@@ -17,7 +18,7 @@ security = HTTPBearer()
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     """
     Extract JWT from Authorization header, validate, and return user.
@@ -49,10 +50,7 @@ async def get_current_user(
         user = await AuthService.get_user_by_id(db, payload.sub)
 
         if not user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
+            raise HTTPException(status_code=404, detail="User not found")
 
         return user
 
@@ -60,5 +58,5 @@ async def get_current_user(
         raise HTTPException(
             status_code=401,
             detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
