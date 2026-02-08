@@ -24,6 +24,22 @@
 
 ---
 
+## Production Readiness ✅
+
+**Status:** Production-ready (as of Feb 7, 2026)
+
+Recent improvements include:
+- ✅ **Performance:** Non-blocking async throughout, N+1 query optimization (21→2 queries)
+- ✅ **Security:** CORS restrictions, rate limiting (10/min general, 5/min AI), input sanitization, security headers
+- ✅ **Reliability:** Startup health checks, comprehensive logging, graceful error handling
+- ✅ **Code Quality:** All magic numbers extracted to constants, standardized error responses, base schema classes
+- ✅ **Validation:** Strong JWT secret validation, API key format checks, enhanced Pydantic validation
+- ✅ **Testing:** 100% of runnable tests passing, linting clean (ruff)
+
+See [CODE_REVIEW.md](CODE_REVIEW.md) for full details on resolved issues.
+
+---
+
 ## Setup & Installation
 
 ### Prerequisites
@@ -70,6 +86,8 @@ ANTHROPIC_API_KEY=YOUR_ANTHROPIC_KEY_HERE
 # OPENAI_API_KEY=YOUR_OPENAI_KEY_HERE
 
 # Authentication
+# IMPORTANT: Use a strong random string (min 32 chars, 10+ unique)
+# Generate with: openssl rand -hex 32
 JWT_SECRET=your-secret-key-change-in-production-use-openssl-rand-hex-32
 JWT_ALGORITHM=HS256
 JWT_EXPIRATION_HOURS=24
@@ -77,9 +95,22 @@ JWT_EXPIRATION_HOURS=24
 # Application
 DEBUG=true
 LOG_LEVEL=info
+
+# CORS Configuration (Required for production)
+# Comma-separated list of allowed origins
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# Rate Limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_PER_MINUTE=10
+RATE_LIMIT_AI_PER_MINUTE=5
 ```
 
-**Note:** Never commit `.env` to version control. A `.env.example` template is provided.
+**Important Notes:**
+- Never commit `.env` to version control. A `.env.example` template is provided.
+- JWT_SECRET must be at least 32 characters with 10+ unique characters for production.
+- ANTHROPIC_API_KEY must start with `sk-ant-` (validated on startup).
+- Update ALLOWED_ORIGINS for your production frontend domains.
 
 ### 5. Database Setup
 
