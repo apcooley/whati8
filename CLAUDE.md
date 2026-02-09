@@ -14,7 +14,7 @@ Instructions and permissions for Claude Code AI assistant working on the whati8 
 
 ## Current Status
 
-### Completed (Phase 1 - Production Ready)
+### ✅ Completed (Production Ready)
 - ✅ Flexible database schema (9 tables: users, nutrients, foods, food_nutrients, meals, food_logs, recipes, recipe_ingredients, user_goals)
 - ✅ Async SQLAlchemy 2.0 models with full type hints
 - ✅ Alembic migrations (async-enabled)
@@ -48,20 +48,52 @@ Instructions and permissions for Claude Code AI assistant working on the whati8 
   - Input sanitization (prompt injection protection)
   - Database matching with fuzzy search
   - Rate limiting (5 requests/minute)
+- ✅ **Food Logging CRUD** (Complete)
+  - POST /logs - Create food log entry
+  - GET /logs - List with filtering (date, meal, pagination)
+  - GET /logs/{id} - Get single log with details
+  - PUT /logs/{id} - Update existing log
+  - DELETE /logs/{id} - Delete log
+  - Authorization enforcement (users can only access their own logs)
+- ✅ **Conversational Agent UI** (Complete - Feb 8, 2026 Evening)
+  - POST /agent/chat - Main conversational endpoint
+  - Multi-turn tool calling with Claude Sonnet 4.5
+  - 7 agent tools: log_food, search_foods, resolve_foods_nl, list_logs, get_daily_summary, delete_log, show_confirmation_form
+  - Conversation history (60-min expiration, in-memory)
+  - Natural language food logging ("I had 2 eggs for breakfast")
+  - Food selection modals (auto-triggered on multiple matches)
+  - Local timestamps (all chat messages display in user's local time)
+  - Smart deduplication (centralized logic prefers human-readable portions like "69g/fruit" over generic "100g")
+  - Permissive matching (0.05 threshold, top 20 results)
+  - Svelte 4 frontend with Tailwind CSS
+  - Mobile-first responsive design
+  - JWT authentication with login/register modal
+  - Production build deployed (single-server, static files served by FastAPI)
 - ✅ **Production Readiness** (Complete)
   - Security: CORS restrictions, rate limiting, authorization framework, security headers
   - Performance: Async throughout, N+1 queries fixed, proper indexing
   - Observability: Comprehensive logging, startup health checks
   - Code Quality: Constants extracted, schema base classes, standardized errors
   - Validation: Strong input validation, API key checks, entropy validation
-  - Testing: All tests passing, linting clean
+  - Testing: All runnable tests passing (7/7), linting clean (ruff)
+
+### ✅ All Known Issues Resolved (Feb 8, 2026 Evening)
+All major agent UI issues have been fixed:
+1. ~~Food selection flow~~ - Auto-detection now triggers modal reliably
+2. ~~Tool result verification~~ - System prompt enhanced with strict verification rules
+3. ~~Timezone display~~ - Frontend uses local time for all chat timestamps
+4. ~~Similarity threshold~~ - Lowered to 0.05, returns top 20 matches
+5. ~~Duplicate entries~~ - Centralized `_deduplicate_foods()` helper applied everywhere
+6. ~~List logs broken~~ - Fixed missing `func` import from SQLAlchemy
 
 ### Next Steps
-1. Food logging CRUD API (POST/GET/PUT/DELETE /logs) - Use authorization framework
-2. Daily dashboard API (GET /dashboard/today, /dashboard/week)
-3. Goal management API (CRUD for user goals)
-4. Meal management API (CRUD for custom meals)
-5. Recipe management API (CRUD for user recipes)
+1. Daily dashboard API (GET /dashboard/today, /dashboard/week)
+2. Goal management API (CRUD for user goals)
+3. Recipe management API (CRUD for user recipes)
+4. Conversation persistence (move from in-memory to database)
+5. Nutrition visualizations and charts
+6. Voice input support (Web Speech API)
+7. Image upload for food photos (Claude Vision API)
 
 ## Agreed Permissions
 
@@ -170,8 +202,45 @@ Clean layers:
 - **Models** (`whati8/models/`) - SQLAlchemy ORM
 - **Schemas** (`whati8/schemas/`) - Pydantic validation
 - **Services** (`whati8/services/`) - Business logic
-- **Routes** (`whati8/api/`) - FastAPI endpoints (future)
+- **Routes** (`whati8/api/`) - FastAPI endpoints
 - **CLI** (`whati8/cli/`) - Command-line interface
+- **Frontend** (`frontend/src/`) - Svelte components and stores
+
+### 6. Conversational Agent Architecture
+The agent uses multi-turn tool calling:
+1. User sends message to POST /agent/chat
+2. Agent receives message + conversation history
+3. Claude analyzes and calls tools (silent execution)
+4. Tool results sent back to Claude
+5. Claude formulates comprehensive response
+6. Response sent to frontend with optional forms
+
+**Available tools:**
+- `log_food` - Create food log entry
+- `search_foods` - Search food database
+- `resolve_foods_nl` - Parse natural language ("2 eggs")
+- `list_logs` - Get user's food logs
+- `get_daily_summary` - Nutrition totals
+- `show_confirmation_form` - Request user confirmation
+
+**Food logging workflow:**
+```
+User: "I had a kiwi fruit for a snack"
+  ↓
+Agent calls: resolve_foods_nl("kiwi fruit")
+  ↓
+Tool returns: 3 matching kiwi options
+  ↓
+Agent calls: show_confirmation_form(food_selection, options)
+  ↓
+Frontend: Shows modal with 3 clickable options
+  ↓
+User: Clicks "Kiwifruit, green, raw (69g/fruit)"
+  ↓
+Agent calls: log_food(food_id=X, quantity=69, meal="snack")
+  ↓
+Agent responds: "I've logged Kiwifruit, green, raw (log ID: Y)"
+```
 
 ## Common Tasks
 
@@ -201,12 +270,41 @@ Clean layers:
 3. Wrap async functions with `asyncio.run()`
 4. Register in `whati8/cli/__init__.py`
 
-### Add REST API Endpoint (Future)
-1. Create `whati8/api/feature.py`
+### Add REST API Endpoint
+1. Create `whati8/api/routers/feature.py`
 2. Use existing service layer (don't duplicate logic)
-3. Add router to main FastAPI app
+3. Add router to main FastAPI app in `whati8/api/app.py`
 4. Use Depends(get_db) for database sessions
 5. Use Depends(get_current_user) for authentication
+6. Add rate limiting for AI endpoints (@limiter.limit)
+
+### Add Agent Tool
+1. Open `whati8/services/agent_service.py`
+2. Add tool definition to AGENT_TOOLS list:
+```python
+{
+    "name": "tool_name",
+    "description": "What the tool does",
+    "input_schema": {
+        "type": "object",
+        "properties": {...},
+        "required": [...]
+    }
+}
+```
+3. Add tool execution handler in `_execute_tool()` method
+4. Tool should call existing services (don't duplicate logic)
+5. Update system prompt if needed for new capability
+6. Test with curl or frontend
+
+### Add Frontend Component
+1. Create `.svelte` file in `frontend/src/lib/components/`
+2. Import and use in parent component
+3. Use Tailwind CSS for styling (mobile-first)
+4. Use stores for state management (don't prop drill)
+5. Call API via `frontend/src/lib/api/` modules
+6. Test in dev mode: `npm run dev`
+7. Build for production: `npm run build`
 
 ## Testing Approach
 
@@ -389,16 +487,39 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
   - `auth.py` - Authentication schemas
   - `food.py` - Food search schemas
   - `food_resolver.py` - AI food resolution schemas
+  - `food_log.py` - Food logging schemas
+  - `agent.py` - Agent chat schemas
 - `whati8/services/` - Business logic
   - `auth.py` - Authentication service (async password hashing)
   - `food_resolver.py` - AI food resolution service (async, sanitized)
+  - `agent_service.py` - Conversational agent with Claude integration
 - `whati8/api/` - FastAPI application
-  - `app.py` - FastAPI factory with security middleware
+  - `app.py` - FastAPI factory with security middleware, static file mounting
   - `deps.py` - Shared dependencies (auth, db)
   - `exceptions.py` - Standardized exception handlers
   - `auth_utils.py` - Authorization utilities (ownership checks)
-  - `routers/` - API endpoints (auth.py, food.py)
+  - `routers/` - API endpoints (auth.py, food.py, food_log.py, agent.py)
 - `whati8/cli/` - Click CLI commands (auth.py)
+
+### Frontend Files
+- `frontend/src/App.svelte` - Root component
+- `frontend/src/main.ts` - Entry point
+- `frontend/src/lib/components/` - UI components
+  - `ChatContainer.svelte` - Main chat layout
+  - `MessageList.svelte` - Conversation display
+  - `MessageBubble.svelte` - Individual message rendering
+  - `InputBox.svelte` - Text input with send button
+  - `LoginModal.svelte` - Authentication modal (login/register)
+  - `FormModal.svelte` - Dynamic forms for confirmations
+- `frontend/src/lib/stores/` - Svelte stores
+  - `auth.ts` - Authentication state (JWT management)
+  - `chat.ts` - Conversation state
+  - `forms.ts` - Modal state
+- `frontend/src/lib/api/` - API clients
+  - `client.ts` - HTTP client with auth headers
+  - `agent.ts` - Agent API calls
+- `frontend/src/lib/types/chat.ts` - TypeScript interfaces
+- `frontend/dist/` - Production build (served by FastAPI)
 
 ### Configuration
 - `.env` - Environment variables (not in git)
@@ -413,13 +534,14 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - `scripts/import_usda_data.py` - USDA bulk data import
 - `scripts/test_api.sh` - Test authentication endpoints
 - `scripts/test_food_api.sh` - Test food search endpoints
+- `scripts/test_food_log_api.sh` - Test food logging endpoints
+- `scripts/server.sh` - Start/stop/status for server daemon
+- `scripts/verify_query_efficiency.py` - Verify N+1 query fixes
 
 ### Documentation
-- `README.md` - User-facing documentation
-- `IMPLEMENTATION.md` - Developer implementation guide
-- `CLAUDE.md` - This file (Claude Code instructions)
-- `CODE_REVIEW.md` - Code review findings and resolutions
-- `TEST_SUMMARY.md` - Test coverage and results
+- `README.md` - User-facing documentation with setup and feature overview
+- `IMPLEMENTATION.md` - Developer implementation guide (comprehensive technical details)
+- `CLAUDE.md` - This file (Claude Code AI assistant instructions)
 
 ## Quick Reference Commands
 
@@ -441,13 +563,39 @@ uv run python -m whati8 auth whoami <token> # Validate token
 uv run python -m whati8 import-usda        # Import USDA food data
 uv run python -m whati8 import-usda --limit 100 # Test import
 
-# API Server
-uv run python -m whati8 serve --reload     # Start development server
-# Access at: http://localhost:8000/docs
+# API Server (Production Mode)
+./scripts/server.sh start                  # Start server daemon
+./scripts/server.sh stop                   # Stop server
+./scripts/server.sh status                 # Check status
+tail -f /tmp/whati8_server.log             # Watch logs
+grep "\[Agent\]" /tmp/whati8_server.log    # Filter agent logs
+
+# API Server (Development Mode)
+uv run python -m whati8 serve --reload     # Start with auto-reload
+# Access at: http://localhost:15853/docs
+
+# Frontend Development
+cd frontend
+npm install                                # Install dependencies
+npm run dev                                # Dev server (http://localhost:5173)
+npm run build                              # Production build to dist/
 
 # Testing
 ./scripts/test_api.sh                      # Test auth endpoints
 ./scripts/test_food_api.sh                 # Test food search endpoints
+./scripts/test_food_log_api.sh             # Test food logging endpoints
+
+# Test Agent with curl
+TOKEN=$(curl -s -X POST http://localhost:15853/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"username","password":"password"}' \
+  | jq -r '.access_token')
+
+curl -X POST http://localhost:15853/agent/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello","session_id":"test-123"}' \
+  | jq
 
 # Development
 uv add <package>                           # Add dependency
@@ -484,4 +632,11 @@ DATABASE_URL=postgresql://whati8:password@localhost:5432/whati8
 
 ---
 
-**Last Updated**: 2026-02-07 (After code review fixes and production readiness)
+**Last Updated**: 2026-02-08 Evening (Production ready - all issues resolved)
+
+**Latest Fixes:**
+- Centralized food deduplication logic (prefers human-readable portions)
+- Fixed missing `func` import for list_logs tool
+- Frontend timestamps now use local time
+- All ruff linting checks passing
+- All runnable tests passing (7/7)

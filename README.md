@@ -26,17 +26,26 @@
 
 ## Production Readiness ✅
 
-**Status:** Production-ready (as of Feb 7, 2026)
+**Status:** Production-ready with conversational UI (as of Feb 8, 2026 Evening)
 
-Recent improvements include:
+### Fully Functional Features
+- ✅ **Conversational Agent:** Multi-turn tool calling, natural language food logging, auto-triggered food selection modals
+- ✅ **7 Agent Tools:** log_food, search_foods, resolve_foods_nl, list_logs, get_daily_summary, delete_log, show_confirmation_form
+- ✅ **Smart Deduplication:** Automatically prefers human-readable portions (e.g., "69g/fruit") over generic 100g servings
+- ✅ **Local Timestamps:** All chat timestamps display in user's local timezone
+- ✅ **Frontend UI:** Svelte 4 + Tailwind CSS, mobile-first responsive design, JWT authentication
 - ✅ **Performance:** Non-blocking async throughout, N+1 query optimization (21→2 queries)
 - ✅ **Security:** CORS restrictions, rate limiting (10/min general, 5/min AI), input sanitization, security headers
 - ✅ **Reliability:** Startup health checks, comprehensive logging, graceful error handling
 - ✅ **Code Quality:** All magic numbers extracted to constants, standardized error responses, base schema classes
 - ✅ **Validation:** Strong JWT secret validation, API key format checks, enhanced Pydantic validation
-- ✅ **Testing:** 100% of runnable tests passing, linting clean (ruff)
+- ✅ **Testing:** 7/7 runnable tests passing, linting clean (ruff)
 
-See [CODE_REVIEW.md](CODE_REVIEW.md) for full details on resolved issues.
+### Recent Fixes (Feb 8, 2026 Evening)
+1. **Food Deduplication** - Centralized deduplication logic prevents duplicate entries in food selection
+2. **List Logs Tool** - Fixed missing `func` import that was breaking log viewing
+3. **Local Timestamps** - Frontend now uses local time for all agent message timestamps
+4. **Code Quality** - All ruff linting issues resolved
 
 ---
 
@@ -248,6 +257,7 @@ Run the automated test suite:
 
 ## Documentation
 
+- **[CURRENT_STATUS.md](CURRENT_STATUS.md)** - Quick reference with current state, known issues, debugging tips (start here)
 - **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Complete implementation guide: schema design, auth system, API reference, setup instructions
 - **[CLAUDE.md](CLAUDE.md)** - Instructions for Claude Code AI assistant
 - **[.env.example](.env.example)** - Environment configuration template
@@ -681,7 +691,7 @@ await db.commit()
 
 ## Roadmap & Next Steps
 
-1.  **Phase 1: Core Logging & Search** *(Current Phase)*
+1.  **Phase 1: Core Logging & Search** ✅ *(Complete)*
     *   ✅ Project structure and README
     *   ✅ **Flexible Domain Model** (9 tables, async SQLAlchemy 2.0)
         - Core: User, Food, FoodLog, Recipe, RecipeIngredient
@@ -712,18 +722,51 @@ await db.commit()
         - Authentication required on all endpoints
         - Pagination support (limit, offset)
         - Similarity scoring for search results
-    *   ⬜ AI agent for natural language food resolution (`/resolve`)
-    *   ⬜ Logging endpoints (`/logs` - CRUD operations)
-    *   ⬜ Daily nutrition dashboard (`/dashboard/today`)
-    *   ⬜ Goal management endpoints (flexible goal types)
-    *   ⬜ Meal management endpoints (custom meals)
-2.  **Phase 2: UI**
-    *   Create a basic web UI to allow the user to chat with the agent.
-    *   Add voice-based requests.
-    *   Add recipe OCR and food recognition technology via photo.
-3.  **Phase 3: Production Ready**
-    *   Tighten the UX
-    *   Harden security requirements
-    *   Ensure scalability
-    *   Deploy to cloud
-    *   Alpha and Beta test
+    *   ✅ **AI Food Resolution** (Complete)
+        - POST /foods/resolve - Natural language food parsing
+        - Anthropic Claude integration (async, rate-limited)
+        - Input sanitization for prompt injection protection
+        - Database matching with fuzzy search
+    *   ✅ **Food Logging CRUD** (Complete)
+        - POST /logs - Create food log entry
+        - GET /logs - List with filtering (date, meal, pagination)
+        - GET /logs/{id} - Get single log
+        - PUT /logs/{id} - Update log
+        - DELETE /logs/{id} - Delete log
+        - Authorization enforcement (user isolation)
+
+2.  **Phase 2: Conversational UI** ✅ *(Complete)*
+    *   ✅ **Conversational Agent** (Complete)
+        - POST /agent/chat - Main conversational endpoint
+        - Multi-turn tool calling with Claude Sonnet 4.5
+        - 6 agent tools: log_food, search_foods, resolve_foods_nl, list_logs, get_daily_summary, show_confirmation_form
+        - Conversation history management (60-min expiration, in-memory)
+        - Natural language food logging workflow
+    *   ✅ **Frontend Web App** (Complete)
+        - Svelte 4 + Tailwind CSS + Vite
+        - Mobile-first responsive design
+        - Chat interface with message history
+        - JWT authentication with login/register modal
+        - Food selection modals for disambiguation
+        - Local timezone display
+        - Production build deployed (single-server, FastAPI serves static files)
+    *   ⬜ Voice-based requests (Web Speech API)
+    *   ⬜ Recipe OCR and food recognition via photo (Claude Vision API)
+
+3.  **Phase 3: Dashboard & Analytics** *(Next Phase)*
+    *   ⬜ Daily nutrition dashboard (GET /dashboard/today, /dashboard/week)
+    *   ⬜ Goal management endpoints (CRUD for flexible goal types)
+    *   ⬜ Meal management endpoints (CRUD for custom meals)
+    *   ⬜ Recipe management endpoints (CRUD for user recipes)
+    *   ⬜ Nutrition visualizations and charts
+    *   ⬜ Progress tracking over time
+
+4.  **Phase 4: Production Hardening**
+    *   ⬜ Conversation persistence (move from in-memory to database)
+    *   ⬜ Streaming responses (Server-Sent Events)
+    *   ⬜ PWA support (installable app)
+    *   ⬜ Offline mode with request queue
+    *   ⬜ Push notifications
+    *   ⬜ Multi-language support
+    *   ⬜ Deploy to cloud
+    *   ⬜ Alpha and Beta testing

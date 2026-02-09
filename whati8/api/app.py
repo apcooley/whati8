@@ -1,8 +1,11 @@
 """FastAPI application factory for whati8."""
 
+from pathlib import Path
+
 from anthropic import APIError as AnthropicAPIError
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from jose.exceptions import JWTError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -16,8 +19,10 @@ from whati8.api.exceptions import (
     integrity_error_handler,
     jwt_exception_handler,
 )
+from whati8.api.routers.agent import router as agent_router
 from whati8.api.routers.auth import router as auth_router
 from whati8.api.routers.food import router as food_router
+from whati8.api.routers.food_log import router as food_log_router
 from whati8.config import settings
 from whati8.database import AsyncSessionLocal
 from whati8.logging_config import get_logger, setup_logging
@@ -44,12 +49,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Control referrer information
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # Content Security Policy
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'"
-        )
+        # Content Security Policy - relaxed for docs endpoints
+        # Swagger UI loads resources from CDN (cdn.jsdelivr.net)
+        if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+            # Allow CDN resources for API documentation
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https://cdn.jsdelivr.net; "
+                "font-src 'self' https://cdn.jsdelivr.net"
+            )
+        else:
+            # Strict CSP for API endpoints
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'"
+            )
 
         return response
 
@@ -104,6 +121,8 @@ def create_app() -> FastAPI:
     # 6. Include routers
     app.include_router(auth_router, prefix="/auth", tags=["authentication"])
     app.include_router(food_router)  # Prefix already in router definition
+    app.include_router(food_log_router)  # Prefix already in router definition
+    app.include_router(agent_router)  # Prefix already in router definition
 
     # 7. Startup event
     @app.on_event("startup")
@@ -132,6 +151,14 @@ def create_app() -> FastAPI:
     async def health_check():
         """Health check endpoint for monitoring."""
         return {"status": "healthy"}
+
+    # 9. Mount static frontend files (MUST come last!)
+    frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+    if frontend_dist.exists():
+        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+        logger.info(f"Serving frontend from {frontend_dist}")
+    else:
+        logger.warning(f"Frontend dist not found at {frontend_dist}")
 
     return app
 

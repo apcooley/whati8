@@ -65,7 +65,7 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 - ✅ Key nutrient preview in search results (calories, protein, carbs, fat)
 - ✅ Complete nutrient data in detail endpoint
 
-**AI Food Resolution System** ⭐ *NEW*
+**AI Food Resolution System**
 - ✅ Natural language food parsing with Claude AI
 - ✅ Pydantic schemas (FoodResolveRequest, ParsedFoodItem, FoodMatchOption, ResolvedFoodItem, FoodResolveResponse)
 - ✅ POST /foods/resolve - Parse text like "I had 2 eggs and toast for breakfast"
@@ -79,17 +79,65 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 - ✅ Requires ANTHROPIC_API_KEY in environment
 - ✅ Cost: ~$0.001-0.003 per resolution request
 
-### ⏭️ Next Steps (Phase 1 Continuation)
+**Food Logging API**
+- ✅ Complete CRUD operations for food logs
+- ✅ Pydantic schemas (FoodLogCreate, FoodLogUpdate, FoodLogResponse, FoodLogListResponse)
+- ✅ POST /logs - Create food log with validation
+- ✅ GET /logs - List logs with date/meal filtering and pagination
+- ✅ GET /logs/{id} - Get single log with full details
+- ✅ PUT /logs/{id} - Update log (all fields optional)
+- ✅ DELETE /logs/{id} - Delete log (204 No Content)
+- ✅ Authorization enforcement (users only see their own logs)
+- ✅ Query efficiency (no N+1 problems with eager loading)
+- ✅ Full food details with nutrients in all responses
+- ✅ Date filtering (YYYY-MM-DD format)
+- ✅ Meal category filtering
+- ✅ Pagination (50 default, 200 max)
+- ✅ Comprehensive test suite (13 tests, all passing)
 
-1. **Food Logging API** - CRUD endpoints for daily consumption tracking
-   - Can use AI resolution results for one-tap logging
-2. **Dashboard API** - Daily/weekly nutrition summaries with goal tracking
-3. **Goal Management API** - CRUD endpoints for flexible nutrition goals
-4. **Meal Management API** - CRUD endpoints for custom meals
-5. **Recipe Management API** - CRUD endpoints for user recipes
-6. **AI Enhancements** (Future)
+**Conversational Agent UI** ⭐ *PRODUCTION READY*
+- ✅ Multi-turn tool calling with Claude API
+- ✅ Agent service with conversation management (60-min expiration)
+- ✅ POST /agent/chat endpoint (rate limited 5/min)
+- ✅ 7 tools: log_food, search_foods, resolve_foods_nl, list_logs, get_daily_summary, delete_log, show_confirmation_form
+- ✅ Svelte frontend with Tailwind CSS
+- ✅ Mobile-first responsive chat interface
+- ✅ User authentication with JWT (registration + login)
+- ✅ Real-time message display with loading states
+- ✅ Food selection modals with nutrition info
+- ✅ Local timestamps (all messages display in user's local time)
+- ✅ Smart deduplication (prefers human-readable portions like "69g/fruit" over "100g")
+- ✅ Static file serving (single-server deployment)
+- ✅ Production build working
+- ✅ All known issues resolved (Feb 8, 2026 evening)
+
+### ⏭️ Next Steps
+
+1. **Dashboard API** (HIGH PRIORITY)
+   - GET /dashboard/today - Daily nutrition summary
+   - GET /dashboard/week - Weekly trends
+   - Aggregate nutrients from food logs
+   - Compare actual vs. goal values
+   - Show trends over time
+
+2. **Goal Management API** - CRUD endpoints for flexible nutrition goals
+   - POST /goals - Create user goal
+   - GET /goals - List user's goals
+   - PUT /goals/{id} - Update goal
+   - DELETE /goals/{id} - Delete goal
+
+3. **Recipe Management API** - CRUD endpoints for user recipes
+   - POST /recipes - Create recipe with ingredients
+   - GET /recipes - List user's recipes
+   - PUT /recipes/{id} - Update recipe
+   - DELETE /recipes/{id} - Delete recipe
+
+4. **Conversation Persistence** - Move from in-memory to database storage
+
+5. **AI Enhancements** (Future)
    - Photo upload support with Claude Vision
-   - User preference learning for match ranking
+   - Streaming responses (SSE)
+   - Voice input (Web Speech API)
    - Recipe/dish detection ("chicken parmesan" → multiple ingredients)
 
 ---
@@ -101,12 +149,14 @@ Complete developer guide for the whati8 nutrition tracker implementation.
 | Component | Technology | Notes |
 |:----------|:-----------|:------|
 | **Backend** | Python 3.10+, FastAPI | High-performance async API |
+| **Frontend** | Svelte 4, Vite 5, TypeScript | Reactive UI with SPA routing |
+| **Styling** | Tailwind CSS 3 | Utility-first, mobile-first design |
 | **Database** | PostgreSQL 14+, SQLAlchemy 2.0 | Async ORM with full type safety |
 | **Driver** | asyncpg | High-performance PostgreSQL driver |
 | **Migrations** | Alembic | Async-enabled schema versioning |
 | **Validation** | Pydantic v2 | Request/response schemas |
 | **Auth** | JWT (python-jose), bcrypt (passlib) | Secure token-based auth |
-| **AI/LLM** | Anthropic Claude (default) | Natural language food parsing |
+| **AI/LLM** | Anthropic Claude Sonnet 4.5 | Natural language food parsing & agent |
 | **Data Source** | USDA Food Data Central API | 50,000+ foods with nutrients |
 
 ### Package Structure

@@ -284,24 +284,24 @@ Extract all food items from the input text."""
                     nutrient_name = fn.nutrient.name.lower()
                     # Map common nutrient names
                     if "energy" in nutrient_name or "calorie" in nutrient_name:
-                        nutrients_map["calories"] = fn.amount
+                        nutrients_map["calories"] = fn.amount_per_serving
                     elif "protein" in nutrient_name:
-                        nutrients_map["protein"] = fn.amount
+                        nutrients_map["protein"] = fn.amount_per_serving
                     elif (
                         "carbohydrate" in nutrient_name
                         and "by difference" in nutrient_name
                     ):
-                        nutrients_map["carbs"] = fn.amount
+                        nutrients_map["carbs"] = fn.amount_per_serving
                     elif (
                         "total lipid" in nutrient_name or "fat, total" in nutrient_name
                     ):
-                        nutrients_map["fat"] = fn.amount
+                        nutrients_map["fat"] = fn.amount_per_serving
 
             match = FoodMatchOption(
                 food_id=food.id,
                 name=food.name,
                 serving_size=food.serving_size or 100.0,
-                unit=food.serving_unit or "g",
+                unit=food.unit or "g",
                 similarity_score=round(similarity_score, 2),
                 calories=nutrients_map.get("calories"),
                 protein=nutrients_map.get("protein"),
