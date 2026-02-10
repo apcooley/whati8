@@ -99,7 +99,8 @@
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.detail || 'Failed to create food');
+        console.error('API Error Response:', data);
+        throw new Error(data.detail || data.message || 'Failed to create food');
       }
 
       const food = await response.json();

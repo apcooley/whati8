@@ -120,11 +120,12 @@ async def create_food(
     # Store the exact serving size/unit the user specified
     default_portion = FoodPortion(
         food_id=food.id,
-        amount=1.0,
+        amount=food_data.serving_size,
         unit_name=food_data.unit,  # Store the unit (g, cup, oz, etc.)
-        modifier=f"{food_data.serving_size} {food_data.unit}",  # Store full amount in modifier
-        gram_weight=food_data.serving_size,  # Treat as grams for compat
-        display_name=f"1 serving = {food_data.serving_size} {food_data.unit}",
+        unit_abbreviation=food_data.unit,
+        gram_weight=food_data.serving_size,  # Treat serving size as grams
+        modifier="serving",
+        portion_description=f"1 serving ({food_data.serving_size} {food_data.unit})",
     )
     db.add(default_portion)
     await db.commit()
