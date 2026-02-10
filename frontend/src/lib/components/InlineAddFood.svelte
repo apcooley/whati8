@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import AddFoodModal from './AddFoodModal.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -7,6 +8,8 @@
   let inputText = '';
   let isLoading = false;
   let error: string | null = null;
+  let showAddFoodModal = false;
+  let searchTerm = '';
 
   async function handleSubmit() {
     if (!inputText.trim()) return;
@@ -89,6 +92,48 @@
     inputText = '';
     error = null;
   }
+
+  function handleOpenAddFood() {
+    searchTerm = inputText;
+    showAddFoodModal = true;
+  }
+
+  function handleFoodCreated(event: any) {
+    const newFood = event.detail;
+    showAddFoodModal = false;
+    
+    // Convert created food to MultiFoodItem format
+    const foodItem = {
+      item_id: typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : 'id-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now().toString(36),
+      raw_text: newFood.name,
+      parsed_quantity: 1,
+      parsed_unit: newFood.unit,
+      confidence: 1.0,
+      selected_food_id: newFood.id,
+      selected_name: newFood.name,
+      serving_size: newFood.serving_size,
+      serving_unit: newFood.unit,
+      calories: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Energy (kcal)')?.amount_per_serving || 0,
+      protein: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Protein')?.amount_per_serving || 0,
+      fat: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Total lipid (fat)')?.amount_per_serving || 0,
+      fiber: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Fiber, total dietary')?.amount_per_serving || null,
+      alternatives: [],
+      status: 'matched',
+    };
+    
+    // Emit to parent
+    dispatch('add', [foodItem]);
+    
+    // Reset
+    inputText = '';
+    isExpanded = false;
+  }
+
+  function handleAddFoodCancel() {
+    showAddFoodModal = false;
+  }
 </script>
 
 <div class="border-t border-gray-200 pt-3 pb-3">
@@ -143,8 +188,24 @@
         </button>
       </div>
       {#if error}
-        <div class="text-sm text-red-600 px-2">{error}</div>
+        <div class="text-sm text-red-600 px-2 flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            on:click={handleOpenAddFood}
+            class="ml-2 text-xs font-medium text-primary-600 hover:text-primary-700 underline whitespace-nowrap"
+          >
+            Create custom food instead
+          </button>
+        </div>
       {/if}
     </div>
   {/if}
 </div>
+
+{#if showAddFoodModal}
+  <AddFoodModal 
+    initialName={searchTerm}
+    on:created={handleFoodCreated}
+    on:cancel={handleAddFoodCancel}
+  />
+{/if}
