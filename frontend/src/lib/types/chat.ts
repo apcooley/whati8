@@ -14,6 +14,7 @@ export interface ToolResult {
 export interface ChatRequest {
   message: string;
   session_id: string;
+  user_timezone: string;
   conversation_history?: Message[];
 }
 

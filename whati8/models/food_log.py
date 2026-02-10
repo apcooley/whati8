@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, Numeric, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from whati8.models.base import Base, TimestampMixin
@@ -52,6 +52,7 @@ class FoodLog(Base, TimestampMixin):
         nullable=False,
     )
     logged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
         index=True,
     )

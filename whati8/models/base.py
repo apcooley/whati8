@@ -3,12 +3,12 @@ Base SQLAlchemy model and mixins.
 
 Provides:
 - Base: Declarative base for all models with naming conventions
-- TimestampMixin: Automatic created_at and updated_at timestamps
+- TimestampMixin: Automatic created_at and updated_at timestamps (timezone-aware UTC)
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import MetaData, func
+from sqlalchemy import MetaData, func, DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Naming convention for constraints and indexes
@@ -32,18 +32,22 @@ class Base(DeclarativeBase):
 
 class TimestampMixin:
     """
-    Mixin that adds created_at and updated_at timestamp fields.
+    Mixin that adds created_at and updated_at timestamp fields with timezone support.
 
-    Fields are automatically managed:
-    - created_at: Set on insert (server default)
-    - updated_at: Updated on every modification (onupdate)
+    Fields are automatically managed with UTC timezone awareness:
+    - created_at: Set on insert (server default, UTC)
+    - updated_at: Updated on every modification (onupdate, UTC)
+    
+    All timestamps are stored in PostgreSQL as TIMESTAMP WITH TIME ZONE (UTC).
     """
 
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,

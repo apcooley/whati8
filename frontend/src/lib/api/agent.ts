@@ -1,5 +1,5 @@
 import type { ChatRequest, ChatResponse, LoginResponse, User } from '../types/chat';
-import { apiRequest } from './client';
+import { apiRequest, getUserTimezone } from './client';
 
 export async function register(username: string, email: string, password: string): Promise<User> {
   return apiRequest<User>('/auth/register', {
@@ -27,8 +27,14 @@ export async function getMe(): Promise<User> {
 }
 
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+  // Ensure user_timezone is set (auto-detect if not provided)
+  const requestWithTimezone: ChatRequest = {
+    ...request,
+    user_timezone: request.user_timezone || getUserTimezone(),
+  };
+  
   return apiRequest<ChatResponse>('/agent/chat', {
     method: 'POST',
-    body: JSON.stringify(request),
+    body: JSON.stringify(requestWithTimezone),
   });
 }
