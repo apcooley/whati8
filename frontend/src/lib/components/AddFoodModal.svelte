@@ -26,7 +26,10 @@
     { value: 'g', label: 'grams (g)' },
     { value: 'oz', label: 'ounces (oz)' },
     { value: 'ml', label: 'milliliters (ml)' },
+    { value: 'fl oz', label: 'fluid ounces (fl oz)' },
     { value: 'cup', label: 'cup' },
+    { value: 'tbsp', label: 'tablespoon (tbsp)' },
+    { value: 'tsp', label: 'teaspoon (tsp)' },
     { value: 'piece', label: 'piece' },
     { value: 'serving', label: 'serving' },
   ];
