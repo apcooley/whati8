@@ -4,10 +4,10 @@ from datetime import datetime
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from whati8.models import Food, FoodLog, Meal, User
+from whati8.models import Food, Meal
 
 
 async def get_test_food_and_meals(db_session: AsyncSession):

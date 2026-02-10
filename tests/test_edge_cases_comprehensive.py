@@ -15,10 +15,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from whati8.models import Food, FoodLog, FoodNutrient, Meal, Nutrient, User
+from whati8.models import Food, Meal, User
 from whati8.schemas.auth import UserCreate
 from whati8.services.auth import AuthService
 from whati8.services.food_resolver import FoodResolverService
