@@ -53,7 +53,7 @@
     >
       <div class="font-medium text-gray-900">{food.name}</div>
       <div class="text-sm text-gray-600 mt-1">
-        {food.serving_size || 100}{food.serving_unit || food.unit || 'g'} • {food.calories ?? '?'} cal • {food.protein ?? '?'}g protein
+        {food.serving_size || 100} {food.serving_unit === 'undetermined' || !food.serving_unit ? 'g' : food.serving_unit} • {food.calories ?? '?'} cal • {food.protein ?? '?'}g protein
       </div>
     </button>
   {/each}

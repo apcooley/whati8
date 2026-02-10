@@ -3,6 +3,7 @@
   import type { MultiFoodItem } from '../stores/multiFoodForm';
   import FoodSelector from './FoodSelector.svelte';
   import QuantityEditor from './QuantityEditor.svelte';
+  import AddFoodModal from './AddFoodModal.svelte';
 
   export let item: MultiFoodItem;
 
@@ -13,6 +14,7 @@
   let showFoodSelector = false;
   let showQuantityEditor = false;
   let isSearching = false;
+  let showAddFoodModal = false;
 
   function handleFoodClick() {
     if (item.alternatives && item.alternatives.length > 0) {
@@ -93,9 +95,34 @@
   }
 
   function handleAddAsIs() {
-    // For now, just exit edit mode
-    // In future, this could create a custom food entry
+    showAddFoodModal = true;
+  }
+
+  function handleFoodCreated(event: CustomEvent) {
+    const newFood = event.detail;
+    showAddFoodModal = false;
+    
+    // Update item with the created food
+    dispatch('update', {
+      itemId: item.item_id,
+      updates: {
+        selected_food_id: newFood.id,
+        selected_name: newFood.name,
+        serving_size: newFood.serving_size,
+        serving_unit: newFood.unit,
+        calories: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Energy (kcal)')?.amount_per_serving || 0,
+        protein: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Protein')?.amount_per_serving || 0,
+        fat: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Total lipid (fat)')?.amount_per_serving || 0,
+        fiber: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Fiber, total dietary')?.amount_per_serving || null,
+        status: 'matched',
+      },
+    });
+    
     isEditMode = false;
+  }
+
+  function handleAddFoodCancel() {
+    showAddFoodModal = false;
   }
 
   function handleFoodSelect(event: CustomEvent) {
@@ -246,5 +273,14 @@
     {item}
     on:save={handleQuantitySave}
     on:cancel={() => showQuantityEditor = false}
+  />
+{/if}
+
+<!-- Add Food Modal -->
+{#if showAddFoodModal}
+  <AddFoodModal 
+    initialName={editText}
+    on:created={handleFoodCreated}
+    on:cancel={handleAddFoodCancel}
   />
 {/if}
