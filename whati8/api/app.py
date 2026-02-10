@@ -1,6 +1,8 @@
 """FastAPI application factory for whati8."""
 
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncGenerator
 
 from anthropic import APIError as AnthropicAPIError
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -10,6 +12,7 @@ from jose.exceptions import JWTError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -28,6 +31,37 @@ from whati8.database import AsyncSessionLocal
 from whati8.logging_config import get_logger, setup_logging
 
 logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """
+    Lifespan context manager for startup/shutdown events.
+    
+    Startup: Initialize logging and verify database connection.
+    Shutdown: Cleanup resources (if any).
+    """
+    # === STARTUP ===
+    setup_logging()
+    logger.info("whati8 API starting up")
+    logger.info(f"Allowed origins: {settings.allowed_origins}")
+    logger.info(
+        f"Rate limiting: {'enabled' if settings.rate_limit_enabled else 'disabled'}"
+    )
+
+    # Test database connection
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(select(1))
+        logger.info("Database connection successful")
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}")
+        raise  # Prevent startup if DB unavailable
+
+    yield  # Application runs here
+
+    # === SHUTDOWN ===
+    logger.info("whati8 API shutting down")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -85,13 +119,14 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    # 1. Initialize app with metadata
+    # 1. Initialize app with metadata and lifespan
     app = FastAPI(
         title="whati8 API",
         description="AI-powered food and nutrition tracker",
         version="0.1.0",
         docs_url="/docs",  # Swagger UI
         redoc_url="/redoc",  # ReDoc
+        lifespan=lifespan,
     )
 
     # 2. Add security headers middleware
@@ -124,35 +159,13 @@ def create_app() -> FastAPI:
     app.include_router(food_log_router)  # Prefix already in router definition
     app.include_router(agent_router)  # Prefix already in router definition
 
-    # 7. Startup event
-    @app.on_event("startup")
-    async def startup_event():
-        """Initialize logging and other startup tasks."""
-        from sqlalchemy import select
-
-        setup_logging()
-        logger.info("whati8 API starting up")
-        logger.info(f"Allowed origins: {settings.allowed_origins}")
-        logger.info(
-            f"Rate limiting: {'enabled' if settings.rate_limit_enabled else 'disabled'}"
-        )
-
-        # Test database connection
-        try:
-            async with AsyncSessionLocal() as db:
-                await db.execute(select(1))
-            logger.info("Database connection successful")
-        except Exception as e:
-            logger.error(f"Database connection failed: {e}")
-            raise  # Prevent startup if DB unavailable
-
-    # 8. Health check endpoint
+    # 7. Health check endpoint
     @app.get("/health", tags=["health"])
     async def health_check():
         """Health check endpoint for monitoring."""
         return {"status": "healthy"}
 
-    # 9. Mount static frontend files (MUST come last!)
+    # 8. Mount static frontend files (MUST come last!)
     frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
     if frontend_dist.exists():
         app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")

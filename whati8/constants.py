@@ -1,5 +1,24 @@
 """Application-wide constants."""
 
+# Nutrient IDs (from USDA FoodData Central / database)
+# These are the standard IDs for key macronutrients
+NUTRIENT_IDS = {
+    "calories": 1008,  # Energy (kcal)
+    "protein": 1003,   # Protein
+    "carbs": 1005,     # Carbohydrate, by difference
+    "fat": 1004,       # Total lipid (fat)
+    "fiber": 1079,     # Fiber, total dietary
+}
+
+# Nutrient names (for looking up by name if ID isn't available)
+NUTRIENT_NAMES = {
+    "calories": "Energy",
+    "protein": "Protein",
+    "carbs": "Carbohydrate, by difference",
+    "fat": "Total lipid (fat)",
+    "fiber": "Fiber, total dietary",
+}
+
 # Food Search
 FOOD_SEARCH_SIMILARITY_THRESHOLD = 0.1
 FOOD_SEARCH_DEFAULT_LIMIT = 20

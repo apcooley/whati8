@@ -13,6 +13,7 @@ from whati8.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from whati8.models.food_log import FoodLog
     from whati8.models.food_nutrient import FoodNutrient
+    from whati8.models.food_portion import FoodPortion
     from whati8.models.recipe import RecipeIngredient
     from whati8.models.user import User
 
@@ -50,6 +51,13 @@ class Food(Base, TimestampMixin):
         index=True,
     )
 
+    # Food category (e.g., "Dairy and Egg Products")
+    category: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+
     # User ownership (null for USDA foods)
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -71,6 +79,11 @@ class Food(Base, TimestampMixin):
     food_logs: Mapped[list["FoodLog"]] = relationship(
         back_populates="food",
         cascade="all, delete-orphan",
+    )
+    portions: Mapped[list["FoodPortion"]] = relationship(
+        back_populates="food",
+        cascade="all, delete-orphan",
+        foreign_keys="FoodPortion.food_id",
     )
     recipe_ingredients: Mapped[list["RecipeIngredient"]] = relationship(
         back_populates="food",

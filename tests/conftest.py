@@ -18,7 +18,13 @@ from whati8.services.auth import AuthService
 
 
 # Test database URL (use a separate test database)
-TEST_DATABASE_URL = str(settings.database_url).replace("/whati8", "/whati8_test")
+# Only replace the database name at the end, not the username
+_base_url = str(settings.database_url)
+if _base_url.endswith("/whati8"):
+    TEST_DATABASE_URL = _base_url[:-7] + "/whati8_test"
+else:
+    # Fallback: replace last occurrence only
+    TEST_DATABASE_URL = "/whati8_test".join(_base_url.rsplit("/whati8", 1))
 # Ensure using asyncpg driver
 if not TEST_DATABASE_URL.startswith("postgresql+asyncpg://"):
     TEST_DATABASE_URL = TEST_DATABASE_URL.replace(
@@ -26,17 +32,17 @@ if not TEST_DATABASE_URL.startswith("postgresql+asyncpg://"):
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def event_loop():
-    """Create event loop for async tests."""
+    """Create event loop for async tests (per module)."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def test_engine():
-    """Create test database engine."""
+    """Create test database engine (per module)."""
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
@@ -46,34 +52,54 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def setup_database(test_engine):
-    """Create all tables in test database."""
-    # Try to create tables, if database doesn't exist, tests will fail
-    # with a clear error message
+    """Create all tables in test database (per module).
+    
+    Creates tables once per test module and drops them after.
+    This ensures each test file starts with clean tables.
+    """
+    from sqlalchemy import text
+    
     try:
+        # Create pg_trgm extension (required for fuzzy search)
+        async with test_engine.connect() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            await conn.commit()
+        
         async with test_engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         yield
-        async with test_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
+        # Don't drop tables at end - next module will drop/recreate anyway
     except Exception as e:
         pytest.skip(f"Test database not available: {e}")
 
 
 @pytest.fixture
 async def db_session(test_engine, setup_database) -> AsyncGenerator[AsyncSession, None]:
-    """Create a clean database session for each test."""
-    AsyncTestingSessionLocal = sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    async with AsyncTestingSessionLocal() as session:
-        yield session
-        await session.rollback()
+    """Create a clean database session for each test.
+    
+    Uses connection-level transaction that gets rolled back, ensuring test isolation
+    even when test code calls commit().
+    """
+    async with test_engine.connect() as conn:
+        # Start a transaction that we'll roll back at the end
+        trans = await conn.begin()
+        
+        # Create session bound to this connection
+        AsyncTestingSessionLocal = sessionmaker(
+            bind=conn,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",  # commits become savepoints
+        )
+        
+        async with AsyncTestingSessionLocal() as session:
+            yield session
+        
+        # Rollback the outer transaction - undoes everything including "commits"
+        await trans.rollback()
 
 
 @pytest.fixture
@@ -85,18 +111,19 @@ async def seed_test_data(db_session: AsyncSession):
         {"name": "Protein", "unit": "g", "description": "Protein"},
         {"name": "Carbohydrate, by difference", "unit": "g", "description": "Carbs"},
         {"name": "Total lipid (fat)", "unit": "g", "description": "Fat"},
+        {"name": "Fiber, total dietary", "unit": "g", "description": "Dietary fiber"},
     ]
 
     for nutrient_data in nutrients_data:
         nutrient = Nutrient(**nutrient_data)
         db_session.add(nutrient)
 
-    # Create standard meals
+    # Create standard meals (no description field in current model)
     meals_data = [
-        {"name": "Breakfast", "description": "Morning meal"},
-        {"name": "Lunch", "description": "Midday meal"},
-        {"name": "Dinner", "description": "Evening meal"},
-        {"name": "Snack", "description": "Between meals"},
+        {"name": "Breakfast"},
+        {"name": "Lunch"},
+        {"name": "Dinner"},
+        {"name": "Snack"},
     ]
 
     for meal_data in meals_data:

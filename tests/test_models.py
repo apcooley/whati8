@@ -1,5 +1,7 @@
 """Tests for database models."""
 
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,17 +85,20 @@ class TestNutrientModel:
         assert nutrient.id is not None
         assert nutrient.name == "Vitamin C"
 
-    async def test_nutrient_unique_name(self, db_session: AsyncSession, seed_test_data):
-        """Test nutrient name uniqueness."""
+    async def test_nutrient_allows_duplicate_names(self, db_session: AsyncSession, seed_test_data):
+        """Test that nutrients allow duplicate names (users can define custom nutrients)."""
         # Get existing nutrient
         result = await db_session.execute(select(Nutrient).limit(1))
         existing = result.scalar_one()
 
-        duplicate = Nutrient(name=existing.name, unit="g", description="Duplicate")
+        # Same name is allowed (e.g., different users can have custom "Net Carbs")
+        duplicate = Nutrient(name=existing.name, unit="g", description="User-defined version")
         db_session.add(duplicate)
+        await db_session.commit()  # Should not raise
+        await db_session.refresh(duplicate)
 
-        with pytest.raises(Exception):  # IntegrityError
-            await db_session.commit()
+        assert duplicate.id is not None
+        assert duplicate.id != existing.id
 
 
 @pytest.mark.db
@@ -119,21 +124,19 @@ class TestFoodModel:
         assert food.serving_size == 100.0
 
     async def test_food_with_nutrients(self, db_session: AsyncSession, seed_test_data):
-        """Test food with nutrient relationships."""
+        """Test food with nutrient relationships via explicit query."""
         # Get existing food
         result = await db_session.execute(select(Food).limit(1))
         food = result.scalar_one()
 
-        # Check relationships
-        assert hasattr(food, "food_nutrients")
-
-        # Get food nutrients
+        # Query food nutrients explicitly (avoid lazy loading issues in async)
         fn_result = await db_session.execute(
             select(FoodNutrient).where(FoodNutrient.food_id == food.id)
         )
         food_nutrients = fn_result.scalars().all()
 
         assert len(food_nutrients) > 0
+        assert food_nutrients[0].food_id == food.id
 
 
 @pytest.mark.db
@@ -143,10 +146,7 @@ class TestMealModel:
 
     async def test_create_meal(self, db_session: AsyncSession):
         """Test creating a meal."""
-        meal = Meal(
-            name="Second Breakfast",
-            description="For hobbits",
-        )
+        meal = Meal(name="Second Breakfast")
         db_session.add(meal)
         await db_session.commit()
         await db_session.refresh(meal)
@@ -154,13 +154,15 @@ class TestMealModel:
         assert meal.id is not None
         assert meal.name == "Second Breakfast"
 
-    async def test_meal_unique_name(self, db_session: AsyncSession, seed_test_data):
-        """Test meal name uniqueness."""
-        duplicate = Meal(name="Breakfast", description="Duplicate")
+    async def test_meal_allows_duplicate_names(self, db_session: AsyncSession, seed_test_data):
+        """Test that meals allow duplicate names (users can define custom meals)."""
+        # Same name is allowed (e.g., different users can have custom "Brunch")
+        duplicate = Meal(name="Breakfast")  # Same as seeded meal
         db_session.add(duplicate)
+        await db_session.commit()  # Should not raise
+        await db_session.refresh(duplicate)
 
-        with pytest.raises(Exception):  # IntegrityError
-            await db_session.commit()
+        assert duplicate.id is not None
 
 
 @pytest.mark.db
@@ -185,7 +187,7 @@ class TestFoodLogModel:
             food_id=food.id,
             meal_id=meal.id,
             quantity=2.0,
-            unit="pieces",
+            logged_at=datetime.utcnow(),
         )
         db_session.add(food_log)
         await db_session.commit()
@@ -204,7 +206,7 @@ class TestFoodLogModel:
             user_id=test_user.id,
             food_id=99999,  # Nonexistent
             quantity=1.0,
-            unit="g",
+            logged_at=datetime.utcnow(),
         )
         db_session.add(invalid_log)
 
@@ -283,8 +285,6 @@ class TestRecipeModel:
             user_id=test_user.id,
             name="Scrambled Eggs",
             description="Simple breakfast",
-            instructions="Mix and cook",
-            servings=2,
         )
         db_session.add(recipe)
         await db_session.commit()
@@ -305,7 +305,7 @@ class TestRecipeModel:
         recipe = Recipe(
             user_id=test_user.id,
             name="Egg Recipe",
-            servings=1,
+            description="Egg-based dish",
         )
         db_session.add(recipe)
         await db_session.flush()

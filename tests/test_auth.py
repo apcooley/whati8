@@ -72,7 +72,7 @@ class TestAuthService:
         token = AuthService.create_access_token(user_id=test_user.id)
         payload = AuthService.decode_token(token)
 
-        assert payload.sub == str(test_user.id)
+        assert payload.sub == test_user.id
         assert payload.exp > 0
 
 
@@ -116,7 +116,7 @@ class TestAuthAPI:
         )
 
         assert response.status_code == 409
-        assert "username" in response.json()["detail"].lower()
+        assert "username" in response.json()["error"]["message"].lower()
 
     async def test_register_duplicate_email(self, client: AsyncClient, test_user: User):
         """Test registration with duplicate email."""
@@ -130,14 +130,14 @@ class TestAuthAPI:
         )
 
         assert response.status_code == 409
-        assert "email" in response.json()["detail"].lower()
+        assert "email" in response.json()["error"]["message"].lower()
 
     async def test_login_success(self, client: AsyncClient, test_user: User):
         """Test successful login."""
         response = await client.post(
             "/auth/login",
             json={
-                "username": test_user.username,
+                "login": test_user.username,
                 "password": "testpassword123",
             },
         )
@@ -153,20 +153,20 @@ class TestAuthAPI:
         response = await client.post(
             "/auth/login",
             json={
-                "username": test_user.username,
+                "login": test_user.username,
                 "password": "wrongpassword",
             },
         )
 
         assert response.status_code == 401
-        assert "invalid" in response.json()["detail"].lower()
+        assert "incorrect" in response.json()["error"]["message"].lower()
 
     async def test_login_nonexistent_user(self, client: AsyncClient):
         """Test login with nonexistent user."""
         response = await client.post(
             "/auth/login",
             json={
-                "username": "nonexistent",
+                "login": "nonexistent",
                 "password": "password",
             },
         )

@@ -60,6 +60,11 @@ class ParsedFoodItem(BaseORMModel):
         description="Measurement unit",
         examples=["pieces", "oz", "g", "cup", "tbsp", "slices"],
     )
+    search_terms: list[str] = Field(
+        default_factory=list,
+        description="Alternative search terms for database lookup",
+        examples=[["overnight oats", "oats", "oatmeal", "rolled oats"]],
+    )
     original_text: str | None = Field(
         None,
         description="Original text snippet from input",
@@ -74,12 +79,23 @@ class ParsedFoodItem(BaseORMModel):
     )
 
 
+class PortionOption(BaseORMModel):
+    """A household portion option for a food (e.g., '1 cup', '1 breast')."""
+
+    portion_id: int = Field(..., description="Database portion ID")
+    amount: float = Field(..., description="Portion amount (e.g., 1.0)")
+    unit_name: str = Field(..., description="Unit name (e.g., 'cup', 'breast')")
+    modifier: str | None = Field(None, description="Modifier (e.g., 'chopped', 'bone removed')")
+    gram_weight: float = Field(..., description="Gram equivalent for this portion")
+    display_name: str = Field(..., description="Human-readable label (e.g., '1 cup (240g)')")
+
+
 class FoodMatchOption(BaseORMModel):
     """Database match option for a parsed food item."""
 
     food_id: int = Field(..., description="Database food ID")
     name: str = Field(..., description="Food name from database")
-    serving_size: float = Field(..., description="Standard serving size")
+    serving_size: float = Field(..., description="Standard serving size in grams")
     unit: str = Field(..., description="Standard serving unit")
     similarity_score: float = Field(
         ...,
@@ -94,6 +110,19 @@ class FoodMatchOption(BaseORMModel):
     quantity_multiplier: float = Field(
         1.0,
         description="Multiplier to convert parsed quantity to serving size",
+    )
+    # Household portions
+    portions: list[PortionOption] = Field(
+        default_factory=list,
+        description="Available household portions (e.g., '1 cup', '1 piece')",
+    )
+    matched_portion: PortionOption | None = Field(
+        None,
+        description="Best-matched portion for user's unit (if found)",
+    )
+    calculated_grams: float | None = Field(
+        None,
+        description="Calculated gram weight based on quantity × matched portion",
     )
 
 

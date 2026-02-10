@@ -27,7 +27,7 @@ export interface ChatResponse {
 }
 
 export interface FormData {
-  form_type: 'food_selection' | 'log_confirmation';
+  form_type: 'food_selection' | 'log_confirmation' | 'multi_food_confirmation';
   data: Record<string, any>;
 }
 

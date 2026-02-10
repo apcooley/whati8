@@ -18,13 +18,19 @@ from whati8.constants import (
 from whati8.logging_config import get_logger
 from whati8.models.food import Food
 from whati8.models.food_nutrient import FoodNutrient
+from whati8.models.food_portion import FoodPortion
 from whati8.models.meal import Meal
 from whati8.schemas.food_resolver import (
     FoodMatchOption,
     MealContext,
     ParsedFoodItem,
+    PortionOption,
     ResolvedFoodItem,
     FoodResolveResponse,
+)
+from whati8.schemas.multi_food import (
+    MultiFoodConfirmationItem,
+    MultiFoodConfirmationResponse,
 )
 
 logger = get_logger(__name__)
@@ -48,6 +54,16 @@ Guidelines:
   - <0.5: Very unclear
 - If a meal is mentioned (breakfast, lunch, dinner, snack), note it
 - For items without explicit quantities, estimate reasonably (confidence <0.8)
+
+IMPORTANT - Generate search_terms for each item:
+- Include 2-5 alternative ways to search for the food in a database
+- Start with the exact food_name, then add simpler/broader terms
+- Examples:
+  - "overnight oats" → ["overnight oats", "oats", "oatmeal", "rolled oats"]
+  - "scrambled eggs" → ["scrambled eggs", "eggs scrambled", "egg"]
+  - "grilled chicken breast" → ["grilled chicken breast", "chicken breast", "chicken"]
+  - "2% milk" → ["2% milk", "milk 2%", "milk reduced fat", "milk"]
+- This helps match foods in the USDA database which uses specific naming conventions
 
 Extract all food items from the input text."""
 
@@ -168,12 +184,18 @@ Extract all food items from the input text."""
                                         "type": "number",
                                         "description": "Confidence 0.0-1.0",
                                     },
+                                    "search_terms": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Alternative search terms for database lookup (e.g., for 'overnight oats': ['overnight oats', 'oats', 'oatmeal', 'rolled oats'])",
+                                    },
                                 },
                                 "required": [
                                     "food_name",
                                     "quantity",
                                     "unit",
                                     "confidence",
+                                    "search_terms",
                                 ],
                             },
                         },
@@ -238,44 +260,193 @@ Extract all food items from the input text."""
         return parsed_items, meal_name
 
     @staticmethod
+    def _match_unit_to_portion(
+        user_unit: str, portions: list[FoodPortion]
+    ) -> FoodPortion | None:
+        """
+        Match a user's unit string to an available portion.
+
+        Priority:
+        1. Exact match on unit_name
+        2. Exact match on modifier (first word)
+        3. Partial match on modifier (e.g., "breast" in "breast, bone removed")
+
+        Args:
+            user_unit: User's unit (e.g., "breast", "cup", "piece", "large")
+            portions: Available portions for the food
+
+        Returns:
+            Best matching portion, or None if no match
+        """
+        user_unit_lower = user_unit.lower().strip()
+
+        # Common unit aliases
+        aliases = {
+            "cups": "cup",
+            "tablespoons": "tablespoon",
+            "tbsp": "tablespoon",
+            "teaspoons": "teaspoon",
+            "tsp": "teaspoon",
+            "pieces": "piece",
+            "slices": "slice",
+            "breasts": "breast",
+            "oz": "ounce",
+            "ounces": "ounce",
+            "lbs": "pound",
+            "pounds": "pound",
+            "serving": "serving",
+            "servings": "serving",
+            "eggs": "egg",
+        }
+        normalized_unit = aliases.get(user_unit_lower, user_unit_lower)
+
+        # Priority 1: Exact match on unit_name
+        for portion in portions:
+            unit_name_lower = (portion.unit_name or "").lower()
+            if normalized_unit == unit_name_lower:
+                logger.debug(f"Exact match on unit_name: {portion.unit_name}")
+                return portion
+
+        # Priority 2: Exact match on modifier (first word or whole)
+        # This handles "large", "small", "medium" for eggs
+        for portion in portions:
+            modifier_lower = (portion.modifier or "").lower()
+            # Check if modifier equals or starts with the unit
+            modifier_first_word = modifier_lower.split()[0] if modifier_lower else ""
+            if normalized_unit == modifier_lower or normalized_unit == modifier_first_word:
+                logger.debug(f"Exact match on modifier: {portion.modifier}")
+                return portion
+
+        # Priority 3: Partial match on modifier (e.g., "breast" in "breast, bone removed")
+        # But NOT in descriptions that are unrelated (e.g., "cup (4.86 large eggs)")
+        for portion in portions:
+            modifier_lower = (portion.modifier or "").lower()
+            # Only match if it's a significant portion of the modifier
+            if modifier_lower and normalized_unit in modifier_lower.split(",")[0]:
+                logger.debug(f"Partial match on modifier: {portion.modifier}")
+                return portion
+
+        # Priority 4: Generic "piece" or "serving" as fallback
+        if normalized_unit in ("piece", "serving"):
+            for portion in portions:
+                unit_name_lower = (portion.unit_name or "").lower()
+                if "piece" in unit_name_lower or "serving" in unit_name_lower:
+                    logger.debug(f"Fallback match on piece/serving: {portion.unit_name}")
+                    return portion
+
+        return None
+
+    @staticmethod
+    def _build_portion_options(portions: list[FoodPortion]) -> list[PortionOption]:
+        """
+        Convert FoodPortion models to PortionOption schemas.
+
+        Args:
+            portions: List of FoodPortion models
+
+        Returns:
+            List of PortionOption schemas
+        """
+        options = []
+        for p in portions:
+            # Build display name
+            unit_part = p.modifier if p.modifier else p.unit_name
+            display_name = f"{float(p.amount)} {unit_part} ({float(p.gram_weight)}g)"
+
+            option = PortionOption(
+                portion_id=p.id,
+                amount=float(p.amount),
+                unit_name=p.unit_name,
+                modifier=p.modifier,
+                gram_weight=float(p.gram_weight),
+                display_name=display_name,
+            )
+            options.append(option)
+        return options
+
+    @staticmethod
     async def match_food_in_database(
-        db: AsyncSession, food_name: str, max_results: int = AI_MAX_MATCHES_PER_ITEM
+        db: AsyncSession,
+        food_name: str,
+        max_results: int = AI_MAX_MATCHES_PER_ITEM,
+        user_unit: str | None = None,
+        user_quantity: float = 1.0,
+        search_terms: list[str] | None = None,
     ) -> list[FoodMatchOption]:
         """
         Find matching foods in database using fuzzy search.
 
+        If search_terms provided, queries all terms and returns best matches
+        (preferring foods with portions when scores are similar).
+
         Args:
             db: Database session
-            food_name: Food name to search for
+            food_name: Food name to search for (primary term)
             max_results: Maximum number of matches to return
+            user_unit: User's unit for portion matching (e.g., "cup", "breast")
+            user_quantity: User's quantity for gram calculation
+            search_terms: Alternative search terms from AI (optional)
 
         Returns:
-            List of matching foods with similarity scores
+            List of matching foods with similarity scores and portions
         """
-        # Fuzzy search using pg_trgm (reuse pattern from food router)
-        query = (
-            select(Food)
-            .options(
-                selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient)
+        # Build list of all terms to search
+        all_terms = [food_name]
+        if search_terms:
+            for term in search_terms:
+                if term and term.lower() != food_name.lower() and term not in all_terms:
+                    all_terms.append(term)
+        
+        logger.info(f"Searching database with terms: {all_terms}")
+        
+        # Search all terms and collect unique foods with best scores
+        # Dict: food_id -> (food, best_similarity, best_term)
+        food_results: dict[int, tuple[Food, float, str]] = {}
+        
+        for term in all_terms:
+            # Secondary sort by portion count to prefer foods with household portions
+            portion_count = (
+                select(func.count(FoodPortion.id))
+                .where(FoodPortion.food_id == Food.id)
+                .correlate(Food)
+                .scalar_subquery()
             )
-            .where(
-                func.similarity(Food.name, food_name) > FOOD_MATCH_SIMILARITY_THRESHOLD
+            
+            query = (
+                select(Food, func.similarity(Food.name, term).label("sim"))
+                .options(
+                    selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+                    selectinload(Food.portions),  # Load household portions
+                )
+                .where(
+                    func.similarity(Food.name, term) > FOOD_MATCH_SIMILARITY_THRESHOLD
+                )
+                .order_by(
+                    func.similarity(Food.name, term).desc(),
+                    portion_count.desc(),  # Prefer foods with portions
+                )
+                .limit(max_results)
             )
-            .order_by(func.similarity(Food.name, food_name).desc())
-            .limit(max_results)
-        )
-
-        result = await db.execute(query)
-        foods = result.scalars().all()
+            
+            result = await db.execute(query)
+            rows = result.all()
+            
+            for food, sim_score in rows:
+                if food.id not in food_results or sim_score > food_results[food.id][1]:
+                    food_results[food.id] = (food, float(sim_score), term)
+        
+        # Sort by similarity (desc), then by portion count (desc)
+        sorted_foods = sorted(
+            food_results.values(),
+            key=lambda x: (x[1], len(x[0].portions)),
+            reverse=True,
+        )[:max_results]
+        
+        logger.info(f"Found {len(sorted_foods)} unique foods from {len(all_terms)} search terms")
 
         # Convert to match options with nutrient preview
         matches = []
-        for food in foods:
-            # Calculate similarity score
-            similarity_result = await db.execute(
-                select(func.similarity(Food.name, food_name)).where(Food.id == food.id)
-            )
-            similarity_score = similarity_result.scalar() or 0.0
+        for food, similarity_score, matched_term in sorted_foods:
 
             # Extract key nutrients
             nutrients_map = {}
@@ -297,6 +468,36 @@ Extract all food items from the input text."""
                     ):
                         nutrients_map["fat"] = fn.amount_per_serving
 
+            # Build portion options
+            portion_options = FoodResolverService._build_portion_options(food.portions)
+
+            # Try to match user's unit to a portion
+            matched_portion = None
+            calculated_grams = None
+            if user_unit and food.portions:
+                portion_match = FoodResolverService._match_unit_to_portion(
+                    user_unit, food.portions
+                )
+                if portion_match:
+                    # Convert to PortionOption schema
+                    unit_part = portion_match.modifier if portion_match.modifier else portion_match.unit_name
+                    matched_portion = PortionOption(
+                        portion_id=portion_match.id,
+                        amount=float(portion_match.amount),
+                        unit_name=portion_match.unit_name,
+                        modifier=portion_match.modifier,
+                        gram_weight=float(portion_match.gram_weight),
+                        display_name=f"{float(portion_match.amount)} {unit_part} ({float(portion_match.gram_weight)}g)",
+                    )
+                    # Calculate total grams: user_quantity × (portion_gram_weight / portion_amount)
+                    # e.g., 2 breasts × (145g / 1 breast) = 290g
+                    grams_per_unit = float(portion_match.gram_weight) / float(portion_match.amount)
+                    calculated_grams = user_quantity * grams_per_unit
+                    logger.info(
+                        f"Matched unit '{user_unit}' to portion '{matched_portion.display_name}' "
+                        f"→ {user_quantity} × {grams_per_unit}g = {calculated_grams}g"
+                    )
+
             match = FoodMatchOption(
                 food_id=food.id,
                 name=food.name,
@@ -307,7 +508,10 @@ Extract all food items from the input text."""
                 protein=nutrients_map.get("protein"),
                 carbs=nutrients_map.get("carbs"),
                 fat=nutrients_map.get("fat"),
-                quantity_multiplier=1.0,  # User can adjust based on their quantity
+                quantity_multiplier=1.0,
+                portions=portion_options,
+                matched_portion=matched_portion,
+                calculated_grams=calculated_grams,
             )
             matches.append(match)
 
@@ -364,7 +568,12 @@ Extract all food items from the input text."""
 
         for parsed_item in parsed_items:
             matches = await FoodResolverService.match_food_in_database(
-                db, parsed_item.food_name, max_matches_per_item
+                db,
+                parsed_item.food_name,
+                max_matches_per_item,
+                user_unit=parsed_item.unit,
+                user_quantity=parsed_item.quantity,
+                search_terms=parsed_item.search_terms,
             )
 
             # Determine status
@@ -410,3 +619,173 @@ Extract all food items from the input text."""
             overall_confidence=round(overall_confidence, 2),
             ai_provider="anthropic",
         )
+
+    @staticmethod
+    def convert_to_multi_food_confirmation(
+        response: FoodResolveResponse,
+    ) -> MultiFoodConfirmationResponse:
+        """
+        Convert FoodResolveResponse to MultiFoodConfirmationResponse.
+
+        Flattens the nested structure, generates UUIDs, guesses meal, and deduplicates.
+
+        Args:
+            response: Original resolve response
+
+        Returns:
+            Flattened multi-food confirmation response
+        """
+        import uuid
+        from datetime import datetime
+
+        # Guess meal based on current time
+        now = datetime.now()
+        hour = now.hour
+
+        if hour < 11:
+            guessed_meal = "Breakfast"
+        elif 11 <= hour < 15:
+            guessed_meal = "Lunch"
+        elif 15 <= hour < 20:
+            guessed_meal = "Dinner"
+        else:
+            guessed_meal = "Snack"
+
+        # Override with meal context if available
+        if response.meal_context and response.meal_context.meal_name:
+            guessed_meal = response.meal_context.meal_name.title()
+
+        food_items = []
+
+        for resolved_item in response.resolved_items:
+            parsed = resolved_item.parsed_item
+            matches = resolved_item.matches
+
+            # Apply deduplication: prefer non-100g servings
+            deduplicated_matches = FoodResolverService._deduplicate_matches(matches)
+
+            # Select the top match as default (if any)
+            selected_match = deduplicated_matches[0] if deduplicated_matches else None
+
+            # Build alternatives list (exclude the selected one)
+            alternatives = []
+            for idx, match in enumerate(deduplicated_matches):
+                if idx == 0:
+                    continue  # Skip the selected match
+                alt_entry = {
+                    "food_id": match.food_id,
+                    "name": match.name,
+                    "serving_size": match.serving_size,
+                    "unit": match.unit,
+                    "calories": match.calories,
+                    "protein": match.protein,
+                    "fat": match.fat,
+                    "similarity_score": match.similarity_score,
+                }
+                # Include full portions for alternatives (needed for unit detection)
+                if match.portions:
+                    alt_entry["portions"] = [
+                        {
+                            "portion_id": p.portion_id,
+                            "amount": p.amount,
+                            "unit_name": p.unit_name,
+                            "modifier": p.modifier,
+                            "gram_weight": p.gram_weight,
+                            "display_name": p.display_name,
+                        }
+                        for p in match.portions[:10]  # Limit to top 10 portions
+                    ]
+                alternatives.append(alt_entry)
+
+            # Determine display unit and serving info
+            # If we matched a portion, use the portion's gram weight
+            display_unit = parsed.unit
+            serving_size = selected_match.serving_size if selected_match else None
+            serving_unit = selected_match.unit if selected_match else None
+
+            # If we have a matched portion, update serving info to reflect calculated grams
+            if selected_match and selected_match.matched_portion:
+                # Show the calculated gram weight as serving size
+                serving_size = selected_match.calculated_grams
+                serving_unit = "g"
+                # Update display unit to show the matched portion
+                portion = selected_match.matched_portion
+                display_unit = portion.modifier if portion.modifier else portion.unit_name
+                logger.info(
+                    f"Using matched portion for '{parsed.food_name}': "
+                    f"{parsed.quantity} {display_unit} = {serving_size}g"
+                )
+
+            # Build portions list for this item
+            item_portions = []
+            if selected_match and selected_match.portions:
+                item_portions = [
+                    {
+                        "portion_id": p.portion_id,
+                        "amount": p.amount,
+                        "unit_name": p.unit_name,
+                        "modifier": p.modifier,
+                        "gram_weight": p.gram_weight,
+                        "display_name": p.display_name,
+                    }
+                    for p in selected_match.portions
+                ]
+
+            # Create flattened item
+            item = MultiFoodConfirmationItem(
+                item_id=str(uuid.uuid4()),
+                raw_text=parsed.original_text or parsed.food_name,
+                parsed_quantity=parsed.quantity,
+                parsed_unit=display_unit,
+                confidence=parsed.confidence,
+                selected_food_id=selected_match.food_id if selected_match else None,
+                selected_name=selected_match.name if selected_match else None,
+                serving_size=serving_size,
+                serving_unit=serving_unit,
+                calories=selected_match.calories if selected_match else None,
+                protein=selected_match.protein if selected_match else None,
+                fat=selected_match.fat if selected_match else None,
+                fiber=None,  # Not currently tracked in FoodMatchOption
+                portions=item_portions,
+                alternatives=alternatives,
+                status=resolved_item.status,
+            )
+            food_items.append(item)
+
+        return MultiFoodConfirmationResponse(
+            original_text=response.original_text,
+            food_items=food_items,
+            guessed_meal=guessed_meal,
+            overall_confidence=response.overall_confidence,
+        )
+
+    @staticmethod
+    def _deduplicate_matches(matches: list[FoodMatchOption]) -> list[FoodMatchOption]:
+        """
+        Deduplicate food matches, preferring human-readable portions over 100g.
+
+        Args:
+            matches: List of food match options
+
+        Returns:
+            Deduplicated list
+        """
+        seen_names = {}
+        for match in matches:
+            name = match.name
+            serving_size = match.serving_size
+
+            if name not in seen_names:
+                # First time seeing this name - add it
+                seen_names[name] = match
+            else:
+                # Duplicate found - prefer non-100g portion
+                existing_serving = seen_names[name].serving_size
+                if existing_serving == 100.0 and serving_size != 100.0:
+                    # Replace 100g with human-readable portion
+                    seen_names[name] = match
+                    logger.info(
+                        f"Replaced 100g serving with {serving_size}g for '{name}'"
+                    )
+
+        return list(seen_names.values())

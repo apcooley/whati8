@@ -30,30 +30,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from whati8.database import AsyncSessionLocal  # noqa: E402
-from whati8.models import Food, FoodNutrient, Nutrient  # noqa: E402
-
-
-# USDA Nutrient ID to our standard nutrient name mapping
-NUTRIENT_MAPPING = {
-    1008: "Calories",  # Energy
-    1003: "Protein",
-    1005: "Total Carbohydrates",  # Carbohydrate
-    1004: "Total Fat",
-    1079: "Dietary Fiber",  # Fiber
-    2000: "Total Sugars",  # Total Sugar
-    1258: "Saturated Fat",
-    1257: "Trans Fat",
-    1292: "Monounsaturated Fat",
-    1293: "Polyunsaturated Fat",
-    1093: "Sodium",
-    1253: "Cholesterol",
-    1092: "Potassium",
-    1106: "Vitamin A",
-    1162: "Vitamin C",
-    1114: "Vitamin D",
-    1087: "Calcium",
-    1089: "Iron",
-}
+from whati8.models import Food, FoodNutrient, FoodPortion, Nutrient  # noqa: E402
 
 
 # Bulk download URLs (updated periodically by USDA)
@@ -70,15 +47,19 @@ class USDAImporter:
         self.limit = limit
         self.download_dir = project_root / "data" / "usda"
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.nutrient_map: dict[str, int] = {}  # USDA name -> our DB ID
+        self.nutrient_id_map: dict[int, int] = {}  # USDA nutrient ID -> our DB nutrient ID
+        self.nutrient_name_map: dict[str, int] = {}  # USDA nutrient name -> our DB nutrient ID
+        self.db = None
         self.stats = {
             "foods_created": 0,
             "foods_skipped": 0,
             "nutrients_linked": 0,
+            "portions_created": 0,
+            "nutrients_created": 0,
         }
 
     async def load_nutrient_mapping(self):
-        """Load nutrient name to ID mapping from database."""
+        """Load and create nutrient mappings from database."""
         print("Loading nutrient mappings from database...")
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -86,13 +67,8 @@ class USDAImporter:
             )
             nutrients = result.scalars().all()
 
-            if not nutrients:
-                print("  ✗ No standard nutrients found in database!")
-                print("  Run: uv run python scripts/seed_standard_data.py")
-                sys.exit(1)
-
-            self.nutrient_map = {n.name: n.id for n in nutrients}
-            print(f"  ✓ Loaded {len(self.nutrient_map)} standard nutrients")
+            self.nutrient_name_map = {n.name: n.id for n in nutrients}
+            print(f"  ✓ Loaded {len(self.nutrient_name_map)} standard nutrients")
 
     def download_file(self, dataset_type: str) -> Path:
         """Download USDA bulk data file if not already cached."""
@@ -145,29 +121,36 @@ class USDAImporter:
         print(f"  ✓ Extracted: {json_file.name}")
         return json_file
 
-    def parse_food_item(
-        self, food_data: dict[str, Any]
-    ) -> tuple[Food, list[FoodNutrient]]:
-        """Parse USDA food JSON into Food and FoodNutrient objects."""
+    async def parse_food_item(
+        self, food_data: dict[str, Any], db
+    ) -> tuple[Food, list[FoodNutrient], list[FoodPortion]]:
+        """Parse USDA food JSON into Food, FoodNutrient, and FoodPortion objects."""
         # Extract food details
         fdc_id = food_data.get("fdcId")
         description = food_data.get("description", "Unknown")
+
+        # Get food category
+        category = None
+        food_category = food_data.get("foodCategory")
+        if food_category:
+            category = food_category.get("description")
 
         # Get serving size info (default to 100g)
         serving_size = 100.0
         unit = "g"
 
         # Some foods have serving size info in foodPortions
-        food_portions = food_data.get("foodPortions", [])
-        if food_portions:
-            portion = food_portions[0]  # Use first portion
+        food_portions_data = food_data.get("foodPortions", [])
+        if food_portions_data:
+            portion = food_portions_data[0]  # Use first portion
             gram_weight = portion.get("gramWeight", 100.0)
             if gram_weight > 0:
                 serving_size = gram_weight
-                # Try to get unit from portion description
-                portion_desc = portion.get("portionDescription", "")
-                if portion_desc:
-                    unit = portion_desc
+                # Try to get unit from measure unit
+                measure_unit = portion.get("measureUnit", {})
+                unit_name = measure_unit.get("name", "")
+                if unit_name:
+                    unit = unit_name
 
         # Create food object
         food = Food(
@@ -176,40 +159,92 @@ class USDAImporter:
             serving_size=serving_size,
             unit=unit,
             usda_fdc_id=fdc_id,
+            category=category,
             created_by_user_id=None,  # NULL for USDA foods
             notes=f"USDA FDC ID: {fdc_id}",
         )
 
-        # Parse nutrients
+        # Parse nutrients (ALL of them, not just NUTRIENT_MAPPING)
         food_nutrients = []
         nutrients_data = food_data.get("foodNutrients", [])
 
         for nutrient_data in nutrients_data:
-            nutrient_id = nutrient_data.get("nutrient", {}).get("id")
+            nutrient_info = nutrient_data.get("nutrient", {})
+            usda_nutrient_id = nutrient_info.get("id")
+            usda_nutrient_name = nutrient_info.get("name", "Unknown")
+            usda_nutrient_unit = nutrient_info.get("unitName", "")
             amount = nutrient_data.get("amount")
 
             # Skip if no amount or nutrient ID
-            if amount is None or nutrient_id is None:
+            if amount is None or usda_nutrient_id is None:
                 continue
 
-            # Map USDA nutrient ID to our nutrient name
-            nutrient_name = NUTRIENT_MAPPING.get(nutrient_id)
-            if not nutrient_name:
-                continue  # Skip nutrients we don't track
+            # Try to find or create nutrient in database
+            our_nutrient_id = None
 
-            # Get our database nutrient ID
-            our_nutrient_id = self.nutrient_map.get(nutrient_name)
-            if not our_nutrient_id:
-                continue  # Skip if not in our database
+            # First check if we've already mapped this USDA ID
+            if usda_nutrient_id in self.nutrient_id_map:
+                our_nutrient_id = self.nutrient_id_map[usda_nutrient_id]
+            # Then check by name
+            elif usda_nutrient_name in self.nutrient_name_map:
+                our_nutrient_id = self.nutrient_name_map[usda_nutrient_name]
+                self.nutrient_id_map[usda_nutrient_id] = our_nutrient_id
+            else:
+                # Create a new nutrient in database
+                new_nutrient = Nutrient(
+                    name=usda_nutrient_name,
+                    unit=usda_nutrient_unit,
+                    created_by_user_id=None,  # Standard nutrients
+                )
+                db.add(new_nutrient)
+                await db.flush()  # Get the ID
+                our_nutrient_id = new_nutrient.id
+                self.nutrient_name_map[usda_nutrient_name] = our_nutrient_id
+                self.nutrient_id_map[usda_nutrient_id] = our_nutrient_id
+                self.stats["nutrients_created"] += 1
 
             # Create food nutrient link
-            food_nutrient = FoodNutrient(
-                nutrient_id=our_nutrient_id,
-                amount_per_serving=float(amount),
-            )
-            food_nutrients.append(food_nutrient)
+            # Skip if we already have this nutrient for this food
+            if our_nutrient_id:
+                # Check if this nutrient is already in our list
+                if not any(fn.nutrient_id == our_nutrient_id for fn in food_nutrients):
+                    food_nutrient = FoodNutrient(
+                        nutrient_id=our_nutrient_id,
+                        amount_per_serving=float(amount),
+                    )
+                    food_nutrients.append(food_nutrient)
+                    self.stats["nutrients_linked"] += 1
 
-        return food, food_nutrients
+        # Parse food portions
+        portions = []
+        for i, portion_data in enumerate(food_portions_data):
+            measure_unit = portion_data.get("measureUnit", {})
+            unit_name = measure_unit.get("name", "unit")
+            unit_abbreviation = measure_unit.get("abbreviation")
+            amount = portion_data.get("amount", portion_data.get("value", 1.0))
+            gram_weight = portion_data.get("gramWeight", 100.0)
+            modifier = portion_data.get("modifier") or None
+            sequence_number = portion_data.get("sequenceNumber", i)
+
+            # Build portion description
+            portion_description = f"{amount} {unit_name}"
+            if modifier:
+                portion_description += f" {modifier}"
+            portion_description += f" ({gram_weight}g)"
+
+            portion = FoodPortion(
+                amount=float(amount),
+                unit_name=unit_name,
+                unit_abbreviation=unit_abbreviation,
+                gram_weight=float(gram_weight),
+                modifier=modifier,
+                portion_description=portion_description,
+                sequence_number=sequence_number,
+            )
+            portions.append(portion)
+            self.stats["portions_created"] += 1
+
+        return food, food_nutrients, portions
 
     async def import_foods(self, json_path: Path, dataset_name: str):
         """Import foods from JSON file into database."""
@@ -258,7 +293,7 @@ class USDAImporter:
                             continue
 
                         # Parse and create food
-                        food, food_nutrients = self.parse_food_item(food_data)
+                        food, food_nutrients, portions = await self.parse_food_item(food_data, db)
                         db.add(food)
                         await db.flush()  # Get food.id
 
@@ -266,7 +301,11 @@ class USDAImporter:
                         for fn in food_nutrients:
                             fn.food_id = food.id
                             db.add(fn)
-                            self.stats["nutrients_linked"] += 1
+
+                        # Add portions
+                        for portion in portions:
+                            portion.food_id = food.id
+                            db.add(portion)
 
                         self.stats["foods_created"] += 1
 
@@ -274,6 +313,8 @@ class USDAImporter:
                         print(
                             f"\n  ✗ Error processing food {food_data.get('fdcId')}: {e}"
                         )
+                        import traceback
+                        traceback.print_exc()
                         continue
 
                 # Commit batch
@@ -320,6 +361,8 @@ class USDAImporter:
         print(f"  Foods created:     {self.stats['foods_created']:,}")
         print(f"  Foods skipped:     {self.stats['foods_skipped']:,}")
         print(f"  Nutrients linked:  {self.stats['nutrients_linked']:,}")
+        print(f"  Portions created:  {self.stats['portions_created']:,}")
+        print(f"  Nutrients created: {self.stats['nutrients_created']:,}")
         print("=" * 70)
 
 

@@ -4,6 +4,7 @@ Food logging CRUD API endpoints.
 Provides endpoints for tracking daily food consumption with full CRUD operations.
 """
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -25,6 +26,9 @@ from whati8.schemas.food_log import (
     FoodLogResponse,
     FoodLogUpdate,
 )
+from whati8.schemas.multi_food import FoodLogBatchRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/logs", tags=["food-logs"])
 
@@ -337,3 +341,89 @@ async def delete_food_log(
     await db.commit()
 
     return None
+
+
+@router.post("/batch", response_model=dict)
+async def create_logs_batch(
+    request: FoodLogBatchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Batch create food logs. All-or-nothing transaction.
+
+    Creates multiple food log entries in a single atomic transaction.
+    If any entry fails validation, the entire batch is rolled back.
+
+    **Authentication required.**
+
+    Example:
+    ```json
+    {
+        "entries": [
+            {"food_id": 102, "quantity": 150.0, "meal_id": 1},
+            {"food_id": 234, "quantity": 200.0, "meal_id": 1}
+        ],
+        "logged_at": "2026-02-09T08:30:00"
+    }
+    ```
+    """
+    from datetime import datetime
+
+    try:
+        # Parse logged_at timestamp or use current time
+        if request.logged_at:
+            logged_at_str = request.logged_at.replace("Z", "+00:00")
+            logged_at = datetime.fromisoformat(logged_at_str)
+            # Convert to naive datetime (remove timezone info)
+            if logged_at.tzinfo is not None:
+                logged_at = logged_at.replace(tzinfo=None)
+        else:
+            logged_at = datetime.utcnow()
+
+        # Validate all food_ids exist
+        food_ids = [entry.food_id for entry in request.entries]
+        result = await db.execute(
+            select(Food.id).where(Food.id.in_(food_ids))
+        )
+        existing_food_ids = set(result.scalars().all())
+
+        missing_food_ids = set(food_ids) - existing_food_ids
+        if missing_food_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Foods not found: {sorted(missing_food_ids)}",
+            )
+
+        # Create all food logs in transaction
+        created_logs = []
+        for entry in request.entries:
+            food_log = FoodLog(
+                user_id=current_user.id,
+                food_id=entry.food_id,
+                meal_id=entry.meal_id,
+                quantity=entry.quantity,
+                logged_at=logged_at,
+            )
+            db.add(food_log)
+            created_logs.append(food_log)
+
+        # Commit transaction
+        await db.commit()
+
+        return {
+            "logged": len(created_logs),
+            "message": f"Successfully logged {len(created_logs)} food(s)",
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Rollback on any error
+        await db.rollback()
+        logger.error(f"Error creating batch logs: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create batch logs: {str(e)}",
+        )

@@ -230,7 +230,9 @@ class TestFoodResolverAPI:
         )
 
         assert response.status_code == 400
-        assert "extract" in response.json()["detail"].lower()
+        # Error response uses {"error": {"message": ...}} format
+        error_msg = response.json().get("error", {}).get("message", "") or response.json().get("detail", "")
+        assert "extract" in error_msg.lower() or "no food" in error_msg.lower()
 
     async def test_resolve_foods_endpoint_no_auth(self, client: AsyncClient):
         """Test API without authentication."""

@@ -8,6 +8,7 @@ from whati8.models.base import Base
 from whati8.models.food import Food
 from whati8.models.food_log import FoodLog
 from whati8.models.food_nutrient import FoodNutrient
+from whati8.models.food_portion import FoodPortion
 from whati8.models.meal import Meal
 from whati8.models.nutrient import Nutrient
 from whati8.models.recipe import Recipe, RecipeIngredient
@@ -20,6 +21,7 @@ __all__ = [
     "Food",
     "FoodLog",
     "FoodNutrient",
+    "FoodPortion",
     "Meal",
     "Nutrient",
     "Recipe",

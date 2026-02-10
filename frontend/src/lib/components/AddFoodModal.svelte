@@ -1,0 +1,371 @@
+<script lang="ts">
+  import { createEventDispatcher } from 'svelte';
+
+  export let initialName: string = '';
+  
+  const dispatch = createEventDispatcher();
+
+  let formData = {
+    name: initialName,
+    brand: '',
+    serving_size: 100,
+    unit: 'g',
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    fiber: null as number | null,
+    notes: '',
+  };
+
+  let isSubmitting = false;
+  let error: string | null = null;
+  let fieldErrors: Record<string, string> = {};
+
+  const servingUnits = [
+    { value: 'g', label: 'grams (g)' },
+    { value: 'oz', label: 'ounces (oz)' },
+    { value: 'ml', label: 'milliliters (ml)' },
+    { value: 'cup', label: 'cup' },
+    { value: 'piece', label: 'piece' },
+    { value: 'serving', label: 'serving' },
+  ];
+
+  function validateForm(): boolean {
+    fieldErrors = {};
+    error = null;
+
+    if (!formData.name || formData.name.trim().length < 2) {
+      fieldErrors.name = 'Food name must be at least 2 characters';
+    }
+
+    if (formData.serving_size <= 0) {
+      fieldErrors.serving_size = 'Serving size must be greater than 0';
+    }
+
+    if (formData.calories < 0) {
+      fieldErrors.calories = 'Calories cannot be negative';
+    }
+
+    if (formData.protein < 0) {
+      fieldErrors.protein = 'Protein cannot be negative';
+    }
+
+    if (formData.carbs < 0) {
+      fieldErrors.carbs = 'Carbs cannot be negative';
+    }
+
+    if (formData.fat < 0) {
+      fieldErrors.fat = 'Fat cannot be negative';
+    }
+
+    if (formData.fiber !== null && formData.fiber < 0) {
+      fieldErrors.fiber = 'Fiber cannot be negative';
+    }
+
+    return Object.keys(fieldErrors).length === 0;
+  }
+
+  async function handleSubmit() {
+    if (!validateForm()) {
+      return;
+    }
+
+    isSubmitting = true;
+    error = null;
+
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        brand: formData.brand.trim() || null,
+        serving_size: formData.serving_size,
+        unit: formData.unit,
+        calories: formData.calories,
+        protein: formData.protein,
+        carbs: formData.carbs,
+        fat: formData.fat,
+        fiber: formData.fiber,
+        notes: formData.notes.trim() || null,
+      };
+
+      const response = await fetch('/foods/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to create food');
+      }
+
+      const food = await response.json();
+      dispatch('created', food);
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to create food';
+    } finally {
+      isSubmitting = false;
+    }
+  }
+
+  function handleCancel() {
+    dispatch('cancel');
+  }
+</script>
+
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-end md:items-center justify-center z-50">
+  <!-- Backdrop -->
+  <div 
+    class="absolute inset-0" 
+    on:click={handleCancel}
+    on:keydown={(e) => e.key === 'Escape' && handleCancel()}
+    role="button"
+    tabindex="-1"
+    aria-label="Close modal"
+  ></div>
+
+  <!-- Modal -->
+  <div
+    class="relative bg-white rounded-t-lg md:rounded-lg shadow-xl w-full md:max-w-md md:mx-4 max-h-[90vh] overflow-y-auto"
+  >
+    <!-- Header -->
+    <div class="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+      <h3 class="text-lg font-semibold text-gray-900">
+        Create Custom Food
+      </h3>
+      <button
+        on:click={handleCancel}
+        class="text-gray-400 hover:text-gray-600"
+        disabled={isSubmitting}
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="p-4 space-y-4">
+      {#if error}
+        <div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
+        </div>
+      {/if}
+
+      <!-- Food Name -->
+      <div>
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">
+          Food Name *
+        </label>
+        <input
+          id="name"
+          type="text"
+          bind:value={formData.name}
+          placeholder="e.g., Vanilla Yogurt"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          disabled={isSubmitting}
+        />
+        {#if fieldErrors.name}
+          <p class="text-sm text-red-600 mt-1">{fieldErrors.name}</p>
+        {/if}
+      </div>
+
+      <!-- Brand -->
+      <div>
+        <label for="brand" class="block text-sm font-medium text-gray-700 mb-1">
+          Brand (optional)
+        </label>
+        <input
+          id="brand"
+          type="text"
+          bind:value={formData.brand}
+          placeholder="e.g., Acme Brand"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          disabled={isSubmitting}
+        />
+      </div>
+
+      <!-- Serving Size & Unit -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label for="serving_size" class="block text-sm font-medium text-gray-700 mb-1">
+            Serving Size *
+          </label>
+          <input
+            id="serving_size"
+            type="number"
+            bind:value={formData.serving_size}
+            placeholder="100"
+            step="0.1"
+            min="0"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            disabled={isSubmitting}
+          />
+          {#if fieldErrors.serving_size}
+            <p class="text-sm text-red-600 mt-1">{fieldErrors.serving_size}</p>
+          {/if}
+        </div>
+        <div>
+          <label for="unit" class="block text-sm font-medium text-gray-700 mb-1">
+            Unit
+          </label>
+          <select
+            id="unit"
+            bind:value={formData.unit}
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            disabled={isSubmitting}
+          >
+            {#each servingUnits as unit}
+              <option value={unit.value}>{unit.label}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      <!-- Calories -->
+      <div>
+        <label for="calories" class="block text-sm font-medium text-gray-700 mb-1">
+          Calories (per serving) *
+        </label>
+        <input
+          id="calories"
+          type="number"
+          bind:value={formData.calories}
+          placeholder="0"
+          step="0.1"
+          min="0"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          disabled={isSubmitting}
+        />
+        {#if fieldErrors.calories}
+          <p class="text-sm text-red-600 mt-1">{fieldErrors.calories}</p>
+        {/if}
+      </div>
+
+      <!-- Macronutrients -->
+      <div class="space-y-3">
+        <p class="text-sm font-medium text-gray-700">Macronutrients (optional, per serving)</p>
+        
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label for="protein" class="block text-xs font-medium text-gray-600 mb-1">
+              Protein (g)
+            </label>
+            <input
+              id="protein"
+              type="number"
+              bind:value={formData.protein}
+              placeholder="0"
+              step="0.1"
+              min="0"
+              class="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              disabled={isSubmitting}
+            />
+            {#if fieldErrors.protein}
+              <p class="text-xs text-red-600 mt-1">{fieldErrors.protein}</p>
+            {/if}
+          </div>
+          <div>
+            <label for="carbs" class="block text-xs font-medium text-gray-600 mb-1">
+              Carbs (g)
+            </label>
+            <input
+              id="carbs"
+              type="number"
+              bind:value={formData.carbs}
+              placeholder="0"
+              step="0.1"
+              min="0"
+              class="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              disabled={isSubmitting}
+            />
+            {#if fieldErrors.carbs}
+              <p class="text-xs text-red-600 mt-1">{fieldErrors.carbs}</p>
+            {/if}
+          </div>
+          <div>
+            <label for="fat" class="block text-xs font-medium text-gray-600 mb-1">
+              Fat (g)
+            </label>
+            <input
+              id="fat"
+              type="number"
+              bind:value={formData.fat}
+              placeholder="0"
+              step="0.1"
+              min="0"
+              class="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              disabled={isSubmitting}
+            />
+            {#if fieldErrors.fat}
+              <p class="text-xs text-red-600 mt-1">{fieldErrors.fat}</p>
+            {/if}
+          </div>
+        </div>
+
+        <div>
+          <label for="fiber" class="block text-xs font-medium text-gray-600 mb-1">
+            Fiber (g, optional)
+          </label>
+          <input
+            id="fiber"
+            type="number"
+            bind:value={formData.fiber}
+            placeholder="0"
+            step="0.1"
+            min="0"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+            disabled={isSubmitting}
+          />
+          {#if fieldErrors.fiber}
+            <p class="text-xs text-red-600 mt-1">{fieldErrors.fiber}</p>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div>
+        <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">
+          Notes (optional)
+        </label>
+        <textarea
+          id="notes"
+          bind:value={formData.notes}
+          placeholder="Add any additional notes..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          rows="3"
+          disabled={isSubmitting}
+        ></textarea>
+      </div>
+
+      <!-- Form Actions -->
+      <div class="flex gap-2 pt-4 border-t border-gray-200">
+        <button
+          on:click={handleCancel}
+          class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium"
+          disabled={isSubmitting}
+        >
+          Cancel
+        </button>
+        <button
+          on:click={handleSubmit}
+          disabled={isSubmitting}
+          class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+        >
+          {#if isSubmitting}
+            <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Creating...
+          {:else}
+            Create Food
+          {/if}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

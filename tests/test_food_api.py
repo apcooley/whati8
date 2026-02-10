@@ -52,7 +52,7 @@ class TestFoodSearchAPI:
         self, authenticated_client: AsyncClient, seed_test_data
     ):
         """Test search pagination."""
-        response = await authenticated_client.get("/foods/search?q=e&limit=1&offset=0")
+        response = await authenticated_client.get("/foods/search?q=egg&limit=1&offset=0")
 
         assert response.status_code == 200
         data = response.json()
@@ -106,7 +106,7 @@ class TestFoodDetailsAPI:
         response = await authenticated_client.get("/foods/99999")
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+        assert "not found" in response.json()["error"]["message"].lower()
 
     async def test_get_food_no_auth(self, client: AsyncClient, seed_test_data):
         """Test getting food without authentication."""

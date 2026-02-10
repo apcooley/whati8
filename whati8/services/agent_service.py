@@ -153,7 +153,7 @@ AGENT_TOOLS = [
             "properties": {
                 "form_type": {
                     "type": "string",
-                    "enum": ["food_selection", "log_confirmation"],
+                    "enum": ["food_selection", "log_confirmation", "multi_food_confirmation"],
                     "description": "Type of form to display",
                 },
                 "data": {
@@ -491,36 +491,18 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
                         form_data = tool_use.input
                         logger.info("[Agent] Confirmation form required")
 
-                    # Auto-detect if resolve_foods_nl returned multiple matches
+                    # Auto-trigger multi-food confirmation form for resolve_foods_nl
                     if tool_use.name == "resolve_foods_nl" and tool_result.get("success"):
-                        resolved_items = tool_result.get("resolved_items", [])
-                        if len(resolved_items) > 0:
-                            first_item = resolved_items[0]
-                            matches = first_item.get("matches", [])
-                            if len(matches) > 1:
-                                # Multiple matches found - trigger form automatically
-                                requires_form = True
-
-                                # Extract food data from matches
-                                foods_for_form = []
-                                for match in matches[:10]:  # Process top 10 options
-                                    food_data = match.get("food", {})
-                                    foods_for_form.append({
-                                        "id": food_data.get("id"),
-                                        "name": food_data.get("name"),
-                                        "serving_size": food_data.get("serving_size"),
-                                        "unit": food_data.get("unit"),
-                                        "calories": food_data.get("calories"),
-                                    })
-
-                                # Deduplicate: prefer human-readable portions over generic 100g servings
-                                foods_for_form = AgentService._deduplicate_foods(foods_for_form)
-
-                                form_data = {
-                                    "form_type": "food_selection",
-                                    "data": {"foods": foods_for_form}
-                                }
-                                logger.info(f"[Agent] Auto-triggered food selection form with {len(foods_for_form)} options (deduplicated)")
+                        # Always trigger the multi-food confirmation UI
+                        multi_food_data = tool_result.get("multi_food_confirmation", {})
+                        if multi_food_data:
+                            requires_form = True
+                            form_data = {
+                                "form_type": "multi_food_confirmation",
+                                "data": multi_food_data
+                            }
+                            num_items = len(multi_food_data.get("food_items", []))
+                            logger.info(f"[Agent] Auto-triggered multi-food confirmation form with {num_items} food item(s)")
 
                     # Format for Claude API
                     tool_results_for_claude.append({
@@ -565,6 +547,11 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
                     for tool_use in final_tool_uses:
                         logger.info(f"[Agent] Tool in final response: {tool_use.name}")
                         if tool_use.name == "show_confirmation_form":
+                            # Don't let Claude override auto-triggered multi_food_confirmation form
+                            if requires_form and form_data and form_data.get("form_type") == "multi_food_confirmation":
+                                logger.info("[Agent] Ignoring Claude's show_confirmation_form - already have auto-triggered multi_food_confirmation")
+                                continue
+                            
                             requires_form = True
                             form_data = tool_use.input
 
@@ -588,6 +575,12 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
                         message_content += block.text
 
                 logger.info(f"[Agent] Final message length: {len(message_content)} chars")
+
+                # Suppress Claude's verbose message when showing multi-food confirmation form
+                # The form itself is the UI - no need for explanatory text
+                if requires_form and form_data and form_data.get("form_type") == "multi_food_confirmation":
+                    logger.info("[Agent] Suppressing Claude's message - multi-food form is the UI")
+                    message_content = ""
 
                 # Fallback if Claude returns empty response (shouldn't happen but be safe)
                 if not message_content.strip():
@@ -807,12 +800,13 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
             # Delegate to existing FoodResolverService
             result = await FoodResolverService.resolve_foods(db, params["text"])
 
-            # Convert to dict for Claude (Pydantic model can't be directly serialized in tool results)
+            # Convert to multi-food confirmation format
+            multi_food_response = FoodResolverService.convert_to_multi_food_confirmation(result)
+
+            # Return flattened response for multi-food confirmation UI
             return {
                 "success": True,
-                "resolved_items": [item.model_dump() for item in result.resolved_items],
-                "overall_confidence": result.overall_confidence,
-                "meal_context": result.meal_context.model_dump() if result.meal_context else None,
+                "multi_food_confirmation": multi_food_response.model_dump(),
             }
 
         except Exception as e:
