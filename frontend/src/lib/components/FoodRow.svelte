@@ -104,6 +104,7 @@
     
     // Update item with the created food
     // Set quantity to the serving size so nutrition displays correctly
+    // Include portions for QuantityEditor to calculate nutrition properly
     dispatch('update', {
       itemId: item.item_id,
       updates: {
@@ -117,6 +118,7 @@
         protein: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Protein')?.amount_per_serving || 0,
         fat: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Total lipid (fat)')?.amount_per_serving || 0,
         fiber: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Fiber, total dietary')?.amount_per_serving || null,
+        portions: newFood.portions || [],       // Include portions for calculation
         status: 'matched',
       },
     });

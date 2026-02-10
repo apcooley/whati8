@@ -43,6 +43,9 @@ class FoodResponse(BaseORMModel):
     food_nutrients: list[FoodNutrientResponse] = Field(
         default_factory=list, description="Nutrients in this food"
     )
+    portions: list["PortionItem"] = Field(
+        default_factory=list, description="Available portion sizes"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -50,12 +53,12 @@ class FoodResponse(BaseORMModel):
 class PortionItem(BaseORMModel):
     """Portion/serving size option for a food."""
 
-    portion_id: int = Field(..., description="Portion ID")
+    id: int = Field(..., description="Portion ID")
     amount: float = Field(..., description="Amount (e.g., 1.0)")
     unit_name: str | None = Field(None, description="Unit name (e.g., 'cup')")
     modifier: str | None = Field(None, description="Modifier (e.g., 'large', 'sliced')")
     gram_weight: float = Field(..., description="Weight in grams")
-    display_name: str = Field(..., description="Human-readable display (e.g., '1 cup (240g)')")
+    portion_description: str | None = Field(None, description="Human-readable description")
 
 
 class FoodSearchResultItem(BaseORMModel):

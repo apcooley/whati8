@@ -135,7 +135,10 @@ async def create_food(
     # Reload the food with relationships eagerly loaded for serialization
     query = (
         select(Food)
-        .options(selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient))
+        .options(
+            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+            selectinload(Food.portions),  # Include portions for QuantityEditor
+        )
         .where(Food.id == food.id)
     )
     result = await db.execute(query)
