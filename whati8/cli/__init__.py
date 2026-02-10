@@ -17,7 +17,7 @@ def cli():
 
 @cli.command()
 @click.option("--host", default="0.0.0.0", help="Host to bind (0.0.0.0 for LAN access)")
-@click.option("--port", default=8000, help="Port to bind")
+@click.option("--port", default=9428, help="Port to bind")
 @click.option("--reload", is_flag=True, help="Auto-reload on changes")
 def serve(host: str, port: int, reload: bool):
     """Start the FastAPI server accessible over LAN."""

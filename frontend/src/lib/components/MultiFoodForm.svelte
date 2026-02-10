@@ -62,6 +62,15 @@
     }
   }
 
+  // Helper: Get weight in grams (user-specified or 100g default)
+  function getWeightGrams(item: MultiFoodItem): number {
+    if (item.weight_grams !== null && item.weight_grams > 0) {
+      return item.weight_grams;
+    }
+    // Default to 100g if not specified
+    return 100;
+  }
+
   async function handleSubmit() {
     // Validate: at least one item, all items must have a selected food
     const validItems = items.filter(item => item.selected_food_id !== null);
@@ -80,11 +89,12 @@
     multiFoodFormStore.setError(null);
 
     try {
-      // Prepare batch entries
+      // Prepare batch entries with user-specified weights (default 100g)
       const entries = validItems.map(item => ({
         food_id: item.selected_food_id!,
-        quantity: item.parsed_quantity,
+        quantity: getWeightGrams(item),
         meal_id: mealIdMap[selectedMeal] || 1,
+        notes: `${item.parsed_quantity} ${item.parsed_unit}`,  // Store original unit for reference
       }));
 
       const response = await fetch('/logs/batch', {

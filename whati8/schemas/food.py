@@ -104,6 +104,7 @@ class FoodCreateRequest(BaseModel):
     brand: str | None = Field(None, max_length=100, description="Brand name (optional)")
     serving_size: float = Field(..., gt=0, description="Serving size amount")
     unit: str = Field(default="g", max_length=20, description="Serving unit (g, oz, ml, cup, piece, etc.)")
+    gram_weight: float | None = Field(None, gt=0, description="Weight in grams per serving (optional, for non-mass units)")
     notes: str | None = Field(None, max_length=500, description="Additional notes (optional)")
 
     # Core nutrients per serving

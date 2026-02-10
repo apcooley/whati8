@@ -10,7 +10,7 @@ class MultiFoodConfirmationItem(BaseORMModel):
     item_id: str = Field(..., description="Unique ID for frontend keying (UUID)")
     raw_text: str = Field(..., description="Original text snippet (e.g., '2 eggs')")
     parsed_quantity: float = Field(..., description="AI-parsed numeric quantity")
-    parsed_unit: str = Field(..., description="AI-parsed measurement unit")
+    parsed_unit: str = Field(..., description="AI-parsed measurement unit (user-editable)")
     confidence: float = Field(..., ge=0.0, le=1.0, description="AI confidence")
 
     # Selected match (default/guessed)
@@ -23,9 +23,15 @@ class MultiFoodConfirmationItem(BaseORMModel):
     fat: float | None = Field(None, description="Fat (g) per serving")
     fiber: float | None = Field(None, description="Fiber (g) per serving")
 
-    # Household portions (for unit conversion)
+    # Weight in grams (user can override, defaults to 100g)
+    weight_grams: float | None = Field(
+        None, 
+        description="Weight in grams (user-editable, defaults to 100g if not specified)"
+    )
+
+    # Household portions (informational only)
     portions: list[dict] = Field(
-        default_factory=list, description="Available household portions for this food"
+        default_factory=list, description="Available household portions for reference"
     )
 
     # Alternatives
@@ -52,8 +58,9 @@ class FoodLogBatchEntry(BaseRequestModel):
     """Single entry for batch logging."""
 
     food_id: int = Field(..., gt=0, description="Selected food ID")
-    quantity: float = Field(..., gt=0, description="Quantity in grams")
+    quantity: float = Field(..., gt=0, description="Weight in grams (required)")
     meal_id: int = Field(..., gt=0, description="Meal ID (validated by FK constraint)")
+    notes: str | None = Field(None, description="Optional notes (e.g., '3 cookies, 60g')")
 
 
 class FoodLogBatchRequest(BaseRequestModel):

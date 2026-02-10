@@ -10,6 +10,9 @@
     brand: '',
     serving_size: 100,
     unit: 'g',
+    custom_unit: '',  // For "other" option
+    weight_quantity: null as number | null,  // For non-mass units
+    weight_unit: 'g',  // g, oz, lbs
     calories: 0,
     protein: 0,
     carbs: 0,
@@ -17,6 +20,10 @@
     fiber: null as number | null,
     notes: '',
   };
+
+  // Check if unit is a mass unit
+  const massUnits = ['g', 'oz', 'lbs'];
+  $: isMassUnit = massUnits.includes(formData.unit);
 
   let isSubmitting = false;
   let error: string | null = null;
@@ -32,6 +39,7 @@
     { value: 'tsp', label: 'teaspoon (tsp)' },
     { value: 'piece', label: 'piece' },
     { value: 'serving', label: 'serving' },
+    { value: 'other', label: 'other (custom)' },
   ];
 
   function validateForm(): boolean {
@@ -44,6 +52,10 @@
 
     if (formData.serving_size <= 0) {
       fieldErrors.serving_size = 'Serving size must be greater than 0';
+    }
+
+    if (formData.unit === 'other' && (!formData.custom_unit || formData.custom_unit.trim().length < 1)) {
+      fieldErrors.custom_unit = 'Custom unit name is required';
     }
 
     if (formData.calories < 0) {
@@ -66,7 +78,22 @@
       fieldErrors.fiber = 'Fiber cannot be negative';
     }
 
+    // Validate weight if entered (optional, but if quantity is entered, must be > 0)
+    if (formData.weight_quantity !== null && formData.weight_quantity <= 0) {
+      fieldErrors.weight_quantity = 'Weight quantity must be greater than 0';
+    }
+
     return Object.keys(fieldErrors).length === 0;
+  }
+
+  // Convert weight to grams based on unit
+  function convertWeightToGrams(quantity: number, unit: string): number {
+    const conversions: Record<string, number> = {
+      'g': 1,
+      'oz': 28.35,
+      'lbs': 453.6,
+    };
+    return quantity * (conversions[unit] || 1);
   }
 
   async function handleSubmit() {
@@ -78,17 +105,24 @@
     error = null;
 
     try {
+      // Calculate gram_weight if weight is provided for non-mass units
+      let gram_weight: number | null = null;
+      if (formData.weight_quantity !== null && !isMassUnit) {
+        gram_weight = convertWeightToGrams(formData.weight_quantity, formData.weight_unit);
+      }
+
       const payload = {
         name: formData.name.trim(),
         brand: formData.brand.trim() || null,
         serving_size: formData.serving_size,
-        unit: formData.unit,
+        unit: formData.unit === 'other' ? formData.custom_unit.trim() : formData.unit,
         calories: formData.calories,
         protein: formData.protein,
         carbs: formData.carbs,
         fat: formData.fat,
         fiber: formData.fiber,
         notes: formData.notes.trim() || null,
+        gram_weight: gram_weight,  // Optional weight for non-mass units
       };
 
       const response = await fetch('/foods/', {
@@ -228,6 +262,65 @@
           </select>
         </div>
       </div>
+
+      <!-- Custom Unit (if "other" is selected) -->
+      {#if formData.unit === 'other'}
+        <div>
+          <label for="custom_unit" class="block text-sm font-medium text-gray-700 mb-1">
+            Custom Unit Name * (e.g., "scoop", "slice", "bowl")
+          </label>
+          <input
+            id="custom_unit"
+            type="text"
+            bind:value={formData.custom_unit}
+            placeholder="e.g., scoop, slice, bowl"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            disabled={isSubmitting}
+          />
+          {#if fieldErrors.custom_unit}
+            <p class="text-sm text-red-600 mt-1">{fieldErrors.custom_unit}</p>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Weight (per serving) - for non-mass units only -->
+      {#if !isMassUnit}
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="weight_quantity" class="block text-sm font-medium text-gray-700 mb-1">
+              Weight (per serving) <span class="text-gray-500 font-normal">(optional)</span>
+            </label>
+            <input
+              id="weight_quantity"
+              type="number"
+              bind:value={formData.weight_quantity}
+              placeholder="e.g., 50"
+              step="0.1"
+              min="0"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              disabled={isSubmitting}
+            />
+            {#if fieldErrors.weight_quantity}
+              <p class="text-sm text-red-600 mt-1">{fieldErrors.weight_quantity}</p>
+            {/if}
+          </div>
+          <div>
+            <label for="weight_unit" class="block text-sm font-medium text-gray-700 mb-1">
+              Unit
+            </label>
+            <select
+              id="weight_unit"
+              bind:value={formData.weight_unit}
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              disabled={isSubmitting}
+            >
+              <option value="g">grams (g)</option>
+              <option value="oz">ounces (oz)</option>
+              <option value="lbs">pounds (lbs)</option>
+            </select>
+          </div>
+        </div>
+      {/if}
 
       <!-- Calories -->
       <div>

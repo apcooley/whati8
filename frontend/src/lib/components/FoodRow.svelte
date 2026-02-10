@@ -237,6 +237,28 @@
         {item.parsed_quantity} {item.parsed_unit}
       </button>
       
+      <!-- Weight input (grams) -->
+      <div class="flex items-center gap-1">
+        <input
+          type="number"
+          value={item.weight_grams || 100}
+          on:change={(e) => {
+            const weight = parseFloat(e.currentTarget.value) || 100;
+            if (weight > 0) {
+              dispatch('update', {
+                itemId: item.item_id,
+                updates: { weight_grams: weight },
+              });
+            }
+          }}
+          class="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          style="min-height: 44px;"
+          min="1"
+          placeholder="100"
+        />
+        <span class="text-sm text-gray-600 whitespace-nowrap">g</span>
+      </div>
+      
       <button
         on:click={handleEdit}
         class="px-2 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"

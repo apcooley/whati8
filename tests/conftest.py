@@ -12,7 +12,7 @@ from sqlalchemy.pool import NullPool
 
 from whati8.api.app import create_app
 from whati8.config import settings
-from whati8.models import Food, Meal, Nutrient, User
+from whati8.models import Food, Meal, Nutrient, User, FoodPortion
 from whati8.models.base import Base
 from whati8.services.auth import AuthService
 
@@ -189,6 +189,56 @@ async def test_user(db_session: AsyncSession) -> User:
 
     user = await AuthService.create_user(db_session, user_data)
     return user
+
+
+@pytest.fixture
+async def user(db_session: AsyncSession) -> User:
+    """Alias for test_user (used in some tests)."""
+    from whati8.schemas.auth import UserCreate
+
+    user_data = UserCreate(
+        username="unituser",
+        email="units@example.com",
+        password="unitpass123",
+    )
+
+    return await AuthService.create_user(db_session, user_data)
+
+
+@pytest.fixture
+async def sample_food(db_session: AsyncSession, seed_test_data) -> Food:
+    """Get the sample food created in seed_test_data."""
+    result = await db_session.execute(
+        select(Food).where(Food.name == "Egg, whole, raw")
+    )
+    return result.scalar_one()
+
+
+@pytest.fixture
+async def sample_food_with_portions(db_session: AsyncSession, user: User) -> Food:
+    """Create a food with multiple portions for testing."""
+    food = Food(
+        name="Milk (whole)",
+        brand="Generic",
+        serving_size=240.0,
+        unit="g",
+        created_by_user_id=user.id,
+    )
+    db_session.add(food)
+    await db_session.flush()
+
+    # Add portions: cup (240g), tbsp (15g), g (1g)
+    portions = [
+        FoodPortion(food_id=food.id, amount=1.0, unit_name="cup", modifier=None, gram_weight=240.0),
+        FoodPortion(food_id=food.id, amount=1.0, unit_name="tbsp", modifier=None, gram_weight=15.0),
+        FoodPortion(food_id=food.id, amount=1.0, unit_name="g", modifier=None, gram_weight=1.0),
+    ]
+    for portion in portions:
+        db_session.add(portion)
+
+    await db_session.commit()
+    await db_session.refresh(food)
+    return food
 
 
 @pytest.fixture

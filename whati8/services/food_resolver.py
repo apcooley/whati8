@@ -300,6 +300,13 @@ Extract all food items from the input text."""
             "serving": "serving",
             "servings": "serving",
             "eggs": "egg",
+            "cookies": "piece",  # Treat cookies as pieces
+            "cookie": "piece",
+            "bananas": "banana",
+            "banana": "piece",  # Fallback: bananas as pieces (1 banana ~ 1 piece)
+            "pieces of": "piece",
+            "item": "piece",
+            "items": "piece",
         }
         normalized_unit = aliases.get(user_unit_lower, user_unit_lower)
 
@@ -481,32 +488,10 @@ Extract all food items from the input text."""
             # Build portion options
             portion_options = FoodResolverService._build_portion_options(food.portions)
 
-            # Try to match user's unit to a portion
+            # Build portion options for informational purposes only
+            # (user will enter weight directly in the UI)
             matched_portion = None
-            calculated_grams = None
-            if user_unit and food.portions:
-                portion_match = FoodResolverService._match_unit_to_portion(
-                    user_unit, food.portions
-                )
-                if portion_match:
-                    # Convert to PortionOption schema
-                    unit_part = portion_match.modifier if portion_match.modifier else portion_match.unit_name
-                    matched_portion = PortionOption(
-                        portion_id=portion_match.id,
-                        amount=float(portion_match.amount),
-                        unit_name=portion_match.unit_name,
-                        modifier=portion_match.modifier,
-                        gram_weight=float(portion_match.gram_weight),
-                        display_name=f"{float(portion_match.amount)} {unit_part} ({float(portion_match.gram_weight)}g)",
-                    )
-                    # Calculate total grams: user_quantity × (portion_gram_weight / portion_amount)
-                    # e.g., 2 breasts × (145g / 1 breast) = 290g
-                    grams_per_unit = float(portion_match.gram_weight) / float(portion_match.amount)
-                    calculated_grams = user_quantity * grams_per_unit
-                    logger.info(
-                        f"Matched unit '{user_unit}' to portion '{matched_portion.display_name}' "
-                        f"→ {user_quantity} × {grams_per_unit}g = {calculated_grams}g"
-                    )
+            calculated_grams = None  # User specifies weight in UI, not calculated here
 
             match = FoodMatchOption(
                 food_id=food.id,
@@ -707,24 +692,14 @@ Extract all food items from the input text."""
                     ]
                 alternatives.append(alt_entry)
 
-            # Determine display unit and serving info
-            # If we matched a portion, use the portion's gram weight
-            display_unit = parsed.unit
+            # Use the food's default portion, not the parsed quantity/unit
+            # This ensures "100 cookies" becomes "1 cookie" with weight from DB
+            display_quantity = 1.0  # Always 1 unit of the food's portion
+            display_unit = parsed.unit  # Keep parsed unit for display, but will be overridden below
+            weight_grams = None
+            
             serving_size = selected_match.serving_size if selected_match else None
             serving_unit = selected_match.unit if selected_match else None
-
-            # If we have a matched portion, update serving info to reflect calculated grams
-            if selected_match and selected_match.matched_portion:
-                # Show the calculated gram weight as serving size
-                serving_size = selected_match.calculated_grams
-                serving_unit = "g"
-                # Update display unit to show the matched portion
-                portion = selected_match.matched_portion
-                display_unit = portion.modifier if portion.modifier else portion.unit_name
-                logger.info(
-                    f"Using matched portion for '{parsed.food_name}': "
-                    f"{parsed.quantity} {display_unit} = {serving_size}g"
-                )
 
             # Build portions list for this item
             item_portions = []
@@ -740,13 +715,20 @@ Extract all food items from the input text."""
                     }
                     for p in selected_match.portions
                 ]
+                
+                # Use the FIRST portion as the default display
+                # This gives us the proper unit_name and gram_weight
+                first_portion = item_portions[0]
+                display_unit = first_portion["unit_name"]  # Override with food's actual unit
+                display_quantity = first_portion["amount"]  # Use portion amount
+                weight_grams = first_portion["gram_weight"]  # Pre-populate weight from portion
 
             # Create flattened item
             item = MultiFoodConfirmationItem(
                 item_id=str(uuid.uuid4()),
                 raw_text=parsed.original_text or parsed.food_name,
-                parsed_quantity=parsed.quantity,
-                parsed_unit=display_unit,
+                parsed_quantity=display_quantity,  # Use 1 unit, not parsed quantity
+                parsed_unit=display_unit,  # Use food's actual unit
                 confidence=parsed.confidence,
                 selected_food_id=selected_match.food_id if selected_match else None,
                 selected_name=selected_match.name if selected_match else None,
@@ -756,6 +738,7 @@ Extract all food items from the input text."""
                 protein=selected_match.protein if selected_match else None,
                 fat=selected_match.fat if selected_match else None,
                 fiber=None,  # Not currently tracked in FoodMatchOption
+                weight_grams=weight_grams,  # Pre-populate from food's portion
                 portions=item_portions,
                 alternatives=alternatives,
                 status=resolved_item.status,

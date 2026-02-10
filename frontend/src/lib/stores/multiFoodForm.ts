@@ -23,7 +23,8 @@ export interface MultiFoodItem {
   protein: number | null;
   fat: number | null;
   fiber: number | null;
-  portions: FoodPortion[];  // Available household portions
+  weight_grams: number | null;  // Weight in grams (user-editable, defaults to 100g)
+  portions: FoodPortion[];  // Available household portions (informational)
   alternatives: Array<{
     food_id: number;
     name: string;
