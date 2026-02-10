@@ -103,19 +103,20 @@
     showAddFoodModal = false;
     
     // Convert created food to MultiFoodItem format
+    // Set quantity to serving size so nutrition displays correctly
     const foodItem = {
       item_id: typeof crypto !== 'undefined' && crypto.randomUUID 
         ? crypto.randomUUID() 
         : 'id-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now().toString(36),
       raw_text: newFood.name,
-      parsed_quantity: 1,
+      parsed_quantity: newFood.serving_size,  // Use serving size, not 1
       parsed_unit: newFood.unit,
       confidence: 1.0,
       selected_food_id: newFood.id,
       selected_name: newFood.name,
       serving_size: newFood.serving_size,
       serving_unit: newFood.unit,
-      calories: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Energy (kcal)')?.amount_per_serving || 0,
+      calories: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Energy' || fn.nutrient.name === 'Energy (kcal)')?.amount_per_serving || 0,
       protein: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Protein')?.amount_per_serving || 0,
       fat: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Total lipid (fat)')?.amount_per_serving || 0,
       fiber: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Fiber, total dietary')?.amount_per_serving || null,

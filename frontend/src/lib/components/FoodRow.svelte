@@ -103,6 +103,7 @@
     showAddFoodModal = false;
     
     // Update item with the created food
+    // Set quantity to the serving size so nutrition displays correctly
     dispatch('update', {
       itemId: item.item_id,
       updates: {
@@ -110,7 +111,9 @@
         selected_name: newFood.name,
         serving_size: newFood.serving_size,
         serving_unit: newFood.unit,
-        calories: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Energy (kcal)')?.amount_per_serving || 0,
+        parsed_quantity: newFood.serving_size,  // Set quantity to serving size
+        parsed_unit: newFood.unit,              // Set unit to match
+        calories: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Energy' || fn.nutrient.name === 'Energy (kcal)')?.amount_per_serving || 0,
         protein: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Protein')?.amount_per_serving || 0,
         fat: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Total lipid (fat)')?.amount_per_serving || 0,
         fiber: newFood.food_nutrients?.find((fn: any) => fn.nutrient.name === 'Fiber, total dietary')?.amount_per_serving || null,

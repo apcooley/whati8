@@ -117,13 +117,15 @@ async def create_food(
     await db.commit()
     
     # Create a default portion for custom foods
-    # Store the exact serving size/unit the user specified
+    # Use gram_weight=100 as normalized base (nutrients are "per serving" which equals 100g for calc)
+    # This makes the QuantityEditor math work: 
+    #   - 1.5 cups = 100g equivalent → 1 cup = 66.67g → multiplier = 0.667
     default_portion = FoodPortion(
         food_id=food.id,
-        amount=food_data.serving_size,
-        unit_name=food_data.unit,  # Store the unit (g, cup, oz, etc.)
+        amount=food_data.serving_size,  # e.g., 1.5 cups
+        unit_name=food_data.unit,
         unit_abbreviation=food_data.unit,
-        gram_weight=food_data.serving_size,  # Treat serving size as grams
+        gram_weight=100.0,  # Normalized: 1 serving = 100g for calculation purposes
         modifier="serving",
         portion_description=f"1 serving ({food_data.serving_size} {food_data.unit})",
     )
