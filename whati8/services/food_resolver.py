@@ -428,10 +428,10 @@ Extract all food items from the input text."""
                 .order_by(
                     # Exact case-insensitive match gets priority
                     (func.lower(Food.name) == func.lower(term)).desc(),
+                    # Custom foods (user-created) rank before USDA foods
+                    Food.created_by_user_id.isnot(None).desc(),
                     # Then similarity score
                     similarity.desc(),
-                    # Custom foods (user-created) boost for similar matches
-                    Food.created_by_user_id.isnot(None).desc(),
                     # Prefer foods with portions
                     portion_count.desc(),
                 )

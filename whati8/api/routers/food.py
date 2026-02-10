@@ -194,8 +194,14 @@ async def search_foods(
         )
         .where(func.similarity(Food.name, q) > similarity_threshold)
         .order_by(
+            # Exact case-insensitive match gets priority
+            (func.lower(Food.name) == func.lower(q)).desc(),
+            # Prioritize custom foods (user-created) for non-exact matches
+            Food.created_by_user_id.isnot(None).desc(),
+            # Then order by similarity score
             func.similarity(Food.name, q).desc(),
-            portion_count.desc(),  # Prefer foods with portions
+            # Prefer foods with portions
+            portion_count.desc(),
         )
         .offset(offset)
         .limit(limit)
