@@ -59,10 +59,13 @@ IMPORTANT - Generate search_terms for each item:
 - Include 2-5 alternative ways to search for the food in a database
 - Start with the exact food_name, then add simpler/broader terms
 - Examples:
-  - "overnight oats" → ["overnight oats", "oats", "oatmeal", "rolled oats"]
+  - "overnight oats" → ["overnight oats", "oats", "oatmeal", "rolled oats", "oat cereal", "cereal oat"]
   - "scrambled eggs" → ["scrambled eggs", "eggs scrambled", "egg"]
   - "grilled chicken breast" → ["grilled chicken breast", "chicken breast", "chicken"]
   - "2% milk" → ["2% milk", "milk 2%", "milk reduced fat", "milk"]
+  - "toast" → ["toast", "bread", "wheat bread"]
+  - "cereal" → ["cereal", "dry cereal", "breakfast cereal"]
+- Try 3-5 variations: exact name, simpler names, common alternatives, component names
 - This helps match foods in the USDA database which uses specific naming conventions
 
 Extract all food items from the input text."""
@@ -405,6 +408,7 @@ Extract all food items from the input text."""
         
         for term in all_terms:
             # Secondary sort by portion count to prefer foods with household portions
+            # Also boost custom foods (created_by_user_id IS NOT NULL) for exact/near-exact matches
             portion_count = (
                 select(func.count(FoodPortion.id))
                 .where(FoodPortion.food_id == Food.id)
@@ -412,18 +416,24 @@ Extract all food items from the input text."""
                 .scalar_subquery()
             )
             
+            similarity = func.similarity(Food.name, term)
+            
             query = (
-                select(Food, func.similarity(Food.name, term).label("sim"))
+                select(Food, similarity.label("sim"))
                 .options(
                     selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
                     selectinload(Food.portions),  # Load household portions
                 )
-                .where(
-                    func.similarity(Food.name, term) > FOOD_MATCH_SIMILARITY_THRESHOLD
-                )
+                .where(similarity > FOOD_MATCH_SIMILARITY_THRESHOLD)
                 .order_by(
-                    func.similarity(Food.name, term).desc(),
-                    portion_count.desc(),  # Prefer foods with portions
+                    # Exact case-insensitive match gets priority
+                    (func.lower(Food.name) == func.lower(term)).desc(),
+                    # Then similarity score
+                    similarity.desc(),
+                    # Custom foods (user-created) boost for similar matches
+                    Food.created_by_user_id.isnot(None).desc(),
+                    # Prefer foods with portions
+                    portion_count.desc(),
                 )
                 .limit(max_results)
             )

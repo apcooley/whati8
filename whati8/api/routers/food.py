@@ -116,6 +116,19 @@ async def create_food(
 
     await db.commit()
     
+    # Create a default portion for custom foods
+    # Store the exact serving size/unit the user specified
+    default_portion = FoodPortion(
+        food_id=food.id,
+        amount=1.0,
+        unit_name=food_data.unit,  # Store the unit (g, cup, oz, etc.)
+        modifier=f"{food_data.serving_size} {food_data.unit}",  # Store full amount in modifier
+        gram_weight=food_data.serving_size,  # Treat as grams for compat
+        display_name=f"1 serving = {food_data.serving_size} {food_data.unit}",
+    )
+    db.add(default_portion)
+    await db.commit()
+    
     # Reload the food with relationships eagerly loaded for serialization
     query = (
         select(Food)
