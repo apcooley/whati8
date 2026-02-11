@@ -26,26 +26,99 @@
 
 ## Production Readiness ✅
 
-**Status:** Production-ready with conversational UI (as of Feb 8, 2026 Evening)
+**Status:** Production-ready with smart food logging and nutrition summaries (as of Feb 10, 2026)
 
 ### Fully Functional Features
 - ✅ **Conversational Agent:** Multi-turn tool calling, natural language food logging, auto-triggered food selection modals
 - ✅ **7 Agent Tools:** log_food, search_foods, resolve_foods_nl, list_logs, get_daily_summary, delete_log, show_confirmation_form
+- ✅ **Smart Unit Handling:** Editable quantities + unit dropdowns with valid conversions per food (Feb 10)
+- ✅ **Batch-Summary Endpoint:** Logs foods, calculates nutrition totals, Claude formats friendly summary (Feb 10)
+- ✅ **Server Auto-Kill:** `uv run python -m whati8 serve` auto-kills existing process on port conflict (Feb 10)
 - ✅ **Smart Deduplication:** Automatically prefers human-readable portions (e.g., "69g/fruit") over generic 100g servings
 - ✅ **Local Timestamps:** All chat timestamps display in user's local timezone
 - ✅ **Frontend UI:** Svelte 4 + Tailwind CSS, mobile-first responsive design, JWT authentication
 - ✅ **Performance:** Non-blocking async throughout, N+1 query optimization (21→2 queries)
-- ✅ **Security:** CORS restrictions, rate limiting (10/min general, 5/min AI), input sanitization, security headers
+- ✅ **Security:** CORS restrictions, rate limiting (10/min general, 5/min AI), input sanitization, security headers, bcrypt 4.0.1
 - ✅ **Reliability:** Startup health checks, comprehensive logging, graceful error handling
 - ✅ **Code Quality:** All magic numbers extracted to constants, standardized error responses, base schema classes
 - ✅ **Validation:** Strong JWT secret validation, API key format checks, enhanced Pydantic validation
-- ✅ **Testing:** 7/7 runnable tests passing, linting clean (ruff)
+- ✅ **Testing:** 27/27 food unit tests + 41 comprehensive edge cases passing
 
-### Recent Fixes (Feb 8, 2026 Evening)
-1. **Food Deduplication** - Centralized deduplication logic prevents duplicate entries in food selection
-2. **List Logs Tool** - Fixed missing `func` import that was breaking log viewing
-3. **Local Timestamps** - Frontend now uses local time for all agent message timestamps
-4. **Code Quality** - All ruff linting issues resolved
+### Recent Updates (Feb 10, 2026)
+
+#### Food Confirmation Form UI
+1. **Editable Quantity Input** - Changed from button to number input
+2. **Unit Dropdown** - Shows only valid conversions for each food
+3. **Cleaner Display** - Format: `[qty input] [unit dropdown]` with modifiers shown
+4. **No Grams Unless Selected** - Grams column only shows if user selected "g" unit
+
+#### Smart Food Logging Flow
+1. User types: "1 egg, 2 peanut butter bars"
+2. Agent responds: "Searching database..."
+3. Form pops up with foods and editable quantities/units
+4. User reviews and clicks "Log Foods"
+5. **NEW:** System logs foods + queries them back + calculates nutrition totals
+6. **NEW:** Claude formats summary: "You logged 1 egg (1 cup) and 2 bars. Total: 2500 kcal, 48g protein, 39g carbs, 40g fat, 0g fiber."
+7. Summary displays in chat
+
+#### Improvements
+1. **Batch-Summary Endpoint** - `/logs/batch-summary` combines logging + Claude formatting in one call
+2. **No Empty Agent Messages** - "Searching database..." shown instead of silent form
+3. **Better Form Feedback** - Summary message confirms what was actually logged
+4. **Auto-Server-Kill** - Port conflicts resolved automatically with `--kill-existing` (default)
+5. **Bcrypt Fix** - Downgraded to 4.0.1 for passlib compatibility
+
+### Test Results
+- ✅ 27 food units system tests passing (unit conversions, weight specifications)
+- ✅ 41 comprehensive edge case tests (boundary conditions, user isolation, special characters)
+- ✅ All existing tests still passing (no regressions)
+
+---
+
+## How It Works: Smart Food Logging (Feb 10, 2026)
+
+### The Flow
+
+1. **User Types:** "I had 1 egg and 2 peanut butter bars"
+
+2. **Agent Responds:** "Searching database..."
+   - The agent calls `resolve_foods_nl` to parse your input
+   - Claude generates search terms and queries the database
+   - System finds matching foods (Egg, whole, raw vs. Peanut Butter Cup)
+
+3. **Confirmation Form Appears** with editable details:
+   ```
+   □ Egg, whole, raw, fresh | [1.0] [piece ▼]
+   □ Peanut Butter Cup bar   | [2.0] [piece ▼]
+   
+   Meal: [Breakfast ▼]
+   [+ Add another food]  [Cancel]  [✓ Log Foods]
+   ```
+   - You can edit quantities (numbers change)
+   - You can change units (dropdown shows valid conversions)
+   - Units respect food types (pieces, cups, grams, etc.)
+
+4. **You Click "Log Foods"** and the magic happens:
+   - Foods are logged to your database
+   - Nutrition data is queried back (calories, protein, carbs, fat, fiber)
+   - **Claude automatically formats a summary** (Feb 10 NEW):
+
+   ```
+   You logged 1 egg (1 piece) and 2 peanut butter bars.
+   Total: 350 calories, 18g protein, 5g carbs, 28g fat, 0g fiber.
+   ```
+
+5. **Summary Appears in Chat** and you're done!
+
+### Key Improvements (Feb 10)
+
+- **Editable Quantities:** No longer clicking buttons—type the amount directly
+- **Smart Unit Dropdowns:** Only shows units that make sense for each food
+  - Egg: piece, cup, oz, g
+  - Peanut Butter: bar, tbsp, oz, g
+- **Smart Form Message:** "Searching database..." instead of silence
+- **Auto Summary:** Claude formats a friendly confirmation message
+- **Auto Server Kill:** Running the server twice doesn't crash—old process auto-killed
 
 ---
 
