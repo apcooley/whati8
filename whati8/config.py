@@ -57,6 +57,16 @@ class Settings(BaseSettings):
         description="OpenAI API key (alternative to Anthropic)",
     )
 
+    # Embedding providers
+    cohere_api_key: str = Field(
+        default="",
+        description="Cohere API key for embed-english-v3.0 embeddings",
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Ollama base URL for local embedding fallback",
+    )
+
     # Application
     debug: bool = Field(
         default=False,

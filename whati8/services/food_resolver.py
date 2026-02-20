@@ -1,7 +1,9 @@
 """Service for AI-powered natural language food resolution."""
 
+import re as _re
+
 from anthropic import Anthropic
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,8 +34,21 @@ from whati8.schemas.multi_food import (
     MultiFoodConfirmationItem,
     MultiFoodConfirmationResponse,
 )
+from whati8.services.embedding_service import (
+    EmbeddingProvider,
+    embed_query,
+)
 
 logger = get_logger(__name__)
+
+# Hybrid search weights
+KEYWORD_WEIGHT = 0.5
+SEMANTIC_WEIGHT = 0.5
+# Bonus for token-level signals (added on top of keyword score)
+TOKEN_EXACT_BONUS = 0.3
+TOKEN_STARTS_WITH_BONUS = 0.15
+TOKEN_WORD_BONUS = 0.1
+LENGTH_PENALTY_FACTOR = 0.002  # Per character
 
 
 class FoodResolverService:
@@ -374,6 +389,44 @@ Extract all food items from the input text."""
             options.append(option)
         return options
 
+    # ------------------------------------------------------------------
+    # Token-level scoring helpers (keyword layer 2)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _token_score(query: str, food_name: str) -> float:
+        """
+        Multi-signal token scoring for a query against a food name.
+
+        Returns a bonus score in [0, ~0.5] that gets added to the trigram
+        similarity to form the final keyword score.
+        """
+        name = food_name.lower()
+        q = query.lower()
+        score = 0.0
+
+        # Exact match
+        if name == q:
+            return 1.0
+
+        # Starts with query
+        if name.startswith(q):
+            score += TOKEN_STARTS_WITH_BONUS
+
+        # Query appears as whole word/token
+        tokens = _re.split(r"[\s,]+", name)
+        if any(t.startswith(q) for t in tokens):
+            score += TOKEN_WORD_BONUS
+
+        # Length penalty — prefer shorter, simpler names
+        score -= len(name) * LENGTH_PENALTY_FACTOR
+
+        return max(score, 0.0)
+
+    # ------------------------------------------------------------------
+    # Hybrid search: keyword + semantic
+    # ------------------------------------------------------------------
+
     @staticmethod
     async def match_food_in_database(
         db: AsyncSession,
@@ -384,93 +437,176 @@ Extract all food items from the input text."""
         search_terms: list[str] | None = None,
     ) -> list[FoodMatchOption]:
         """
-        Find matching foods in database using fuzzy search.
+        Find matching foods using hybrid search (keyword + semantic).
 
-        If search_terms provided, queries all terms and returns best matches
-        (preferring foods with portions when scores are similar).
+        Layer 1 — Keyword: pg_trgm similarity + token-level scoring
+        Layer 2 — Semantic: pgvector cosine similarity (Cohere / Ollama)
+        Final score = KEYWORD_WEIGHT * keyword + SEMANTIC_WEIGHT * semantic
 
-        Args:
-            db: Database session
-            food_name: Food name to search for (primary term)
-            max_results: Maximum number of matches to return
-            user_unit: User's unit for portion matching (e.g., "cup", "breast")
-            user_quantity: User's quantity for gram calculation
-            search_terms: Alternative search terms from AI (optional)
-
-        Returns:
-            List of matching foods with similarity scores and portions
+        Falls back to keyword-only if embedding fails.
         """
-        # Build list of all terms to search
+        # Build list of all search terms
         all_terms = [food_name]
         if search_terms:
             for term in search_terms:
                 if term and term.lower() != food_name.lower() and term not in all_terms:
                     all_terms.append(term)
-        
-        logger.info(f"Searching database with terms: {all_terms}")
-        
-        # Search all terms and collect unique foods with best scores
-        # Dict: food_id -> (food, best_similarity, best_term)
+
+        logger.info(f"Hybrid search with terms: {all_terms}")
+
+        # ----------------------------------------------------------
+        # Layer 1: Keyword search (trigram + token scoring)
+        # ----------------------------------------------------------
+        # Dict: food_id -> (Food, best_keyword_score, matched_term)
         food_results: dict[int, tuple[Food, float, str]] = {}
-        
+
         for term in all_terms:
-            # Secondary sort by portion count to prefer foods with household portions
-            # Also boost custom foods (created_by_user_id IS NOT NULL) for exact/near-exact matches
             portion_count = (
                 select(func.count(FoodPortion.id))
                 .where(FoodPortion.food_id == Food.id)
                 .correlate(Food)
                 .scalar_subquery()
             )
-            
+
             similarity = func.similarity(Food.name, term)
-            
+
             query = (
                 select(Food, similarity.label("sim"))
                 .options(
-                    selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
-                    selectinload(Food.portions),  # Load household portions
+                    selectinload(Food.food_nutrients).selectinload(
+                        FoodNutrient.nutrient
+                    ),
+                    selectinload(Food.portions),
                 )
                 .where(similarity > FOOD_MATCH_SIMILARITY_THRESHOLD)
                 .order_by(
-                    # Exact case-insensitive match gets priority
                     (func.lower(Food.name) == func.lower(term)).desc(),
-                    # Custom foods (user-created) rank before USDA foods
                     Food.created_by_user_id.isnot(None).desc(),
-                    # Then similarity score
                     similarity.desc(),
-                    # Prefer foods with portions
                     portion_count.desc(),
                 )
-                .limit(max_results)
+                .limit(max_results * 2)  # Fetch extra for re-ranking
             )
-            
+
             result = await db.execute(query)
             rows = result.all()
-            
+
             for food, sim_score in rows:
-                if food.id not in food_results or sim_score > food_results[food.id][1]:
-                    food_results[food.id] = (food, float(sim_score), term)
-        
-        # Sort by similarity (desc), then by portion count (desc)
-        sorted_foods = sorted(
-            food_results.values(),
-            key=lambda x: (x[1], len(x[0].portions)),
-            reverse=True,
-        )[:max_results]
-        
-        logger.info(f"Found {len(sorted_foods)} unique foods from {len(all_terms)} search terms")
+                # Combine trigram similarity with token scoring
+                token_bonus = FoodResolverService._token_score(term, food.name)
+                keyword_score = min(float(sim_score) + token_bonus, 1.0)
 
-        # Convert to match options with nutrient preview
+                if (
+                    food.id not in food_results
+                    or keyword_score > food_results[food.id][1]
+                ):
+                    food_results[food.id] = (food, keyword_score, term)
+
+        # ----------------------------------------------------------
+        # Layer 2: Semantic search (embedding cosine similarity)
+        # ----------------------------------------------------------
+        semantic_scores: dict[int, float] = {}
+        embedding_col = None
+
+        try:
+            query_vec, provider = await embed_query(food_name)
+            embedding_col = (
+                "embedding_cohere"
+                if provider == EmbeddingProvider.COHERE
+                else "embedding_ollama"
+            )
+
+            # Format vector for pgvector
+            vec_str = "[" + ",".join(f"{v:.8f}" for v in query_vec) + "]"
+
+            # Cosine similarity search: 1 - cosine_distance
+            # pgvector's <=> operator returns cosine distance
+            sem_query = text(
+                f"SELECT id, 1 - ({embedding_col} <=> :vec::vector) AS cosine_sim "
+                f"FROM foods "
+                f"WHERE {embedding_col} IS NOT NULL "
+                f"ORDER BY {embedding_col} <=> :vec::vector "
+                f"LIMIT :lim"
+            )
+            sem_result = await db.execute(
+                sem_query, {"vec": vec_str, "lim": max_results * 3}
+            )
+
+            for row in sem_result.fetchall():
+                food_id, cosine_sim = row
+                semantic_scores[food_id] = max(float(cosine_sim), 0.0)
+
+            logger.info(
+                f"Semantic search returned {len(semantic_scores)} results via {provider.value}"
+            )
+
+        except Exception as e:
+            logger.warning(f"Semantic search failed, using keyword-only: {e}")
+
+        # ----------------------------------------------------------
+        # Score fusion
+        # ----------------------------------------------------------
+        # Collect all candidate food IDs from both layers
+        all_food_ids = set(food_results.keys()) | set(semantic_scores.keys())
+
+        # For foods found only by semantic search, we need to load them
+        missing_ids = all_food_ids - set(food_results.keys())
+        if missing_ids:
+            load_query = (
+                select(Food)
+                .options(
+                    selectinload(Food.food_nutrients).selectinload(
+                        FoodNutrient.nutrient
+                    ),
+                    selectinload(Food.portions),
+                )
+                .where(Food.id.in_(list(missing_ids)))
+            )
+            load_result = await db.execute(load_query)
+            for food in load_result.scalars().all():
+                food_results[food.id] = (food, 0.0, food_name)
+
+        # Compute final scores
+        scored: list[tuple[Food, float, str]] = []
+        has_semantic = bool(semantic_scores)
+
+        for food_id, (food, kw_score, matched_term) in food_results.items():
+            sem_score = semantic_scores.get(food_id, 0.0)
+
+            if has_semantic:
+                final = KEYWORD_WEIGHT * kw_score + SEMANTIC_WEIGHT * sem_score
+            else:
+                final = kw_score  # Keyword-only fallback
+
+            # Boost custom foods slightly
+            if food.created_by_user_id is not None:
+                final += 0.05
+
+            # Boost foods with portions
+            if food.portions:
+                final += 0.02
+
+            scored.append((food, final, matched_term))
+
+        # Sort by final score descending
+        scored.sort(key=lambda x: x[1], reverse=True)
+        scored = scored[:max_results]
+
+        logger.info(
+            f"Hybrid search: {len(scored)} results "
+            f"(keyword candidates: {len(food_results)}, "
+            f"semantic candidates: {len(semantic_scores)})"
+        )
+
+        # ----------------------------------------------------------
+        # Build match options
+        # ----------------------------------------------------------
         matches = []
-        for food, similarity_score, matched_term in sorted_foods:
-
-            # Extract key nutrients
+        for food, final_score, matched_term in scored:
             nutrients_map = {}
             for fn in food.food_nutrients:
                 if fn.nutrient:
                     nutrient_name = fn.nutrient.name.lower()
-                    # Map common nutrient names
                     if "energy" in nutrient_name or "calorie" in nutrient_name:
                         nutrients_map["calories"] = fn.amount_per_serving
                     elif "protein" in nutrient_name:
@@ -481,32 +617,27 @@ Extract all food items from the input text."""
                     ):
                         nutrients_map["carbs"] = fn.amount_per_serving
                     elif (
-                        "total lipid" in nutrient_name or "fat, total" in nutrient_name
+                        "total lipid" in nutrient_name
+                        or "fat, total" in nutrient_name
                     ):
                         nutrients_map["fat"] = fn.amount_per_serving
 
-            # Build portion options
             portion_options = FoodResolverService._build_portion_options(food.portions)
-
-            # Build portion options for informational purposes only
-            # (user will enter weight directly in the UI)
-            matched_portion = None
-            calculated_grams = None  # User specifies weight in UI, not calculated here
 
             match = FoodMatchOption(
                 food_id=food.id,
                 name=food.name,
                 serving_size=food.serving_size or 100.0,
                 unit=food.unit or "g",
-                similarity_score=round(similarity_score, 2),
+                similarity_score=round(final_score, 3),
                 calories=nutrients_map.get("calories"),
                 protein=nutrients_map.get("protein"),
                 carbs=nutrients_map.get("carbs"),
                 fat=nutrients_map.get("fat"),
                 quantity_multiplier=1.0,
                 portions=portion_options,
-                matched_portion=matched_portion,
-                calculated_grams=calculated_grams,
+                matched_portion=None,
+                calculated_grams=None,
             )
             matches.append(match)
 
