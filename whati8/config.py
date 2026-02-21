@@ -66,20 +66,6 @@ class Settings(BaseSettings):
         default="http://localhost:11434",
         description="Ollama base URL for local embedding fallback",
     )
-    
-    # Rerank configuration
-    rerank_strategy: str = Field(
-        default="word_count",
-        description="Rerank strategy: never, always, word_count, confidence",
-    )
-    rerank_word_threshold: int = Field(
-        default=3,
-        description="Minimum words to trigger reranking (word_count strategy)",
-    )
-    rerank_confidence_threshold: float = Field(
-        default=0.6,
-        description="Score threshold to trigger reranking (confidence strategy)",
-    )
 
     # Application
     debug: bool = Field(
@@ -200,3 +186,30 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+# Load application config from config.toml
+def load_config() -> dict:
+    """Load configuration from config.toml."""
+    config_path = Path(__file__).parent.parent / "config.toml"
+    if not config_path.exists():
+        # Return defaults if config.toml doesn't exist
+        return {
+            "search": {
+                "keyword_weight": 0.5,
+                "semantic_weight": 0.5,
+                "rerank": {
+                    "strategy": "word_count",
+                    "word_threshold": 3,
+                    "confidence_threshold": 0.6,
+                    "top_k": 10,
+                    "max_candidates": 50,
+                },
+            }
+        }
+    
+    with open(config_path, "rb") as f:
+        return tomllib.load(f)
+
+
+app_config = load_config()

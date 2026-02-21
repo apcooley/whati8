@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 
-from whati8.config import settings
+from whati8.config import settings, app_config
 
 logger = logging.getLogger(__name__)
 
@@ -173,13 +173,21 @@ async def rerank_food_matches(
     Args:
         query: Search query
         matches: List of food match dicts (from hybrid search)
-        config: Rerank configuration (uses defaults if None)
+        config: Rerank configuration (uses config.toml defaults if None)
     
     Returns:
         Tuple of (possibly reranked matches, was_reranked boolean)
     """
     if config is None:
-        config = RerankConfig()
+        # Load from config.toml
+        rerank_cfg = app_config.get("search", {}).get("rerank", {})
+        config = RerankConfig(
+            strategy=RerankStrategy(rerank_cfg.get("strategy", "word_count")),
+            word_count_threshold=rerank_cfg.get("word_threshold", 3),
+            confidence_threshold=rerank_cfg.get("confidence_threshold", 0.6),
+            top_k=rerank_cfg.get("top_k", 10),
+            max_candidates=rerank_cfg.get("max_candidates", 50),
+        )
     
     # Check if we should rerank
     top_score = matches[0].get("similarity_score") if matches else None

@@ -1,0 +1,29 @@
+# whati8 Application Configuration
+# Copy to config.toml and customize
+
+[search]
+# Hybrid search weights (keyword vs semantic)
+# Adjust based on search_stats.py optimize recommendations
+keyword_weight = 0.5
+semantic_weight = 0.5
+
+[search.rerank]
+# Rerank strategy: "word_count", "confidence", "always", or "never"
+# - word_count: rerank queries with >= word_threshold words
+# - confidence: rerank when top score < confidence_threshold
+# - always: rerank every query (expensive)
+# - never: disable reranking
+strategy = "word_count"
+
+# Minimum word count to trigger reranking (word_count strategy)
+word_threshold = 3
+
+# Confidence threshold to trigger reranking (confidence strategy)
+# Rerank if top hybrid score is below this value
+confidence_threshold = 0.6
+
+# Number of top results to return after reranking
+top_k = 10
+
+# Maximum candidates to send to Rerank API
+max_candidates = 50
