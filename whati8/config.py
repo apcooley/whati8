@@ -5,6 +5,9 @@ Loads environment variables from .env file using Pydantic Settings.
 All required variables are validated on startup.
 """
 
+import tomllib
+from pathlib import Path
+
 from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
