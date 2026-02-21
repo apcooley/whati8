@@ -60,11 +60,25 @@ class Settings(BaseSettings):
     # Embedding providers
     cohere_api_key: str = Field(
         default="",
-        description="Cohere API key for embed-english-v3.0 embeddings",
+        description="Cohere API key for embed-english-v3.0 embeddings and Rerank",
     )
     ollama_base_url: str = Field(
         default="http://localhost:11434",
         description="Ollama base URL for local embedding fallback",
+    )
+    
+    # Rerank configuration
+    rerank_strategy: str = Field(
+        default="word_count",
+        description="Rerank strategy: never, always, word_count, confidence",
+    )
+    rerank_word_threshold: int = Field(
+        default=3,
+        description="Minimum words to trigger reranking (word_count strategy)",
+    )
+    rerank_confidence_threshold: float = Field(
+        default=0.6,
+        description="Score threshold to trigger reranking (confidence strategy)",
     )
 
     # Application

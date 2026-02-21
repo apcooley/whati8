@@ -26,7 +26,7 @@ from whati8.schemas.food_log import (
     FoodLogResponse,
     FoodLogUpdate,
 )
-from whati8.schemas.multi_food import FoodLogBatchRequest
+from whati8.schemas.multi_food import FoodLogBatchRequest, FoodLogBatchSummaryRequest
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +423,157 @@ async def create_logs_batch(
         # Rollback on any error
         await db.rollback()
         logger.error(f"Error creating batch logs: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create batch logs: {str(e)}",
+        )
+
+
+@router.post("/batch-summary", response_model=dict)
+async def create_logs_batch_with_summary(
+    request: FoodLogBatchSummaryRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Batch create food logs and return AI-formatted summary.
+
+    Creates multiple food log entries and returns a formatted summary of what was logged.
+    Uses Claude to generate a nice summary message.
+
+    **Authentication required.**
+
+    Response includes formatted_summary with the logged foods and nutrition totals.
+    """
+    from datetime import datetime
+    from anthropic import Anthropic
+
+    try:
+        # Parse logged_at timestamp or use current time
+        if request.logged_at:
+            logged_at_str = request.logged_at.replace("Z", "+00:00")
+            logged_at = datetime.fromisoformat(logged_at_str)
+            # Convert to naive datetime (remove timezone info)
+            if logged_at.tzinfo is not None:
+                logged_at = logged_at.replace(tzinfo=None)
+        else:
+            logged_at = datetime.utcnow()
+
+        # Validate all food_ids exist
+        food_ids = [entry.food_id for entry in request.entries]
+        result = await db.execute(
+            select(Food.id).where(Food.id.in_(food_ids))
+        )
+        existing_food_ids = set(result.scalars().all())
+
+        missing_food_ids = set(food_ids) - existing_food_ids
+        if missing_food_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Foods not found: {sorted(missing_food_ids)}",
+            )
+
+        # Create all food logs in transaction
+        created_logs = []
+        for entry in request.entries:
+            food_log = FoodLog(
+                user_id=current_user.id,
+                food_id=entry.food_id,
+                meal_id=entry.meal_id,
+                quantity=entry.quantity,
+                logged_at=logged_at,
+                notes=entry.notes,
+            )
+            db.add(food_log)
+            created_logs.append(food_log)
+
+        # Commit transaction
+        await db.commit()
+
+        # Query logs with nutrition data
+        stmt = (
+            select(FoodLog)
+            .where(FoodLog.user_id == current_user.id)
+            .where(FoodLog.logged_at == logged_at)
+            .options(
+                selectinload(FoodLog.food).selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient)
+            )
+            .order_by(FoodLog.id.desc())
+            .limit(len(created_logs))
+        )
+        result = await db.execute(stmt)
+        logged_foods = result.unique().scalars().all()
+        logged_foods = list(reversed(logged_foods))  # Restore original order
+
+        # Build food summary and calculate nutrition totals
+        food_lines = []
+        totals = {
+            "calories": 0.0,
+            "protein": 0.0,
+            "carbs": 0.0,
+            "fat": 0.0,
+            "fiber": 0.0,
+        }
+
+        for i, log_entry in enumerate(logged_foods):
+            req_entry = request.entries[i]
+            food_lines.append(f"- {req_entry.food_name}, {req_entry.parsed_quantity} {req_entry.parsed_unit}")
+
+            # Calculate nutrition for this entry
+            for fn in log_entry.food.food_nutrients:
+                nutrient_name = fn.nutrient.name.lower()
+                amount = fn.amount_per_serving or 0.0
+
+                if "energy" in nutrient_name or "kcal" in nutrient_name:
+                    totals["calories"] += amount
+                elif "protein" in nutrient_name:
+                    totals["protein"] += amount
+                elif "carbohydrate" in nutrient_name:
+                    totals["carbs"] += amount
+                elif "lipid" in nutrient_name or "fat" in nutrient_name:
+                    totals["fat"] += amount
+                elif "fiber" in nutrient_name:
+                    totals["fiber"] += amount
+
+        # Build prompt for Claude
+        food_summary = "\n".join(food_lines)
+        summary_prompt = f"""The user just logged these foods:
+
+{food_summary}
+
+Total nutrition: {totals['calories']:.0f} calories, {totals['protein']:.1f}g protein, {totals['carbs']:.1f}g carbs, {totals['fat']:.1f}g fat, {totals['fiber']:.1f}g fiber
+
+Please create a brief, friendly confirmation message summarizing what was logged. Keep it concise (1-2 sentences max). Format it naturally, like "You logged 1 egg (1 cup) and 2 Built Peanut Butter Cup bars (2 pieces). Total: 2500 calories, 48g protein, 39g carbs, 40g fat, 0g fiber."
+
+Be conversational and encouraging!"""
+
+        # Call Claude to format summary
+        client = Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=200,
+            messages=[
+                {
+                    "role": "user",
+                    "content": summary_prompt,
+                }
+            ],
+        )
+
+        formatted_summary = response.content[0].text if response.content else "Foods logged successfully!"
+
+        return {
+            "logged": len(created_logs),
+            "formatted_summary": formatted_summary,
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Rollback on any error
+        await db.rollback()
+        logger.error(f"Error creating batch logs with summary: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create batch logs: {str(e)}",

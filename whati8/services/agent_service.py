@@ -576,11 +576,11 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
 
                 logger.info(f"[Agent] Final message length: {len(message_content)} chars")
 
-                # Suppress Claude's verbose message when showing multi-food confirmation form
-                # The form itself is the UI - no need for explanatory text
+                # Show "Searching database..." when showing multi-food confirmation form
+                # The form itself is the UI - no need for explanatory text beyond search indicator
                 if requires_form and form_data and form_data.get("form_type") == "multi_food_confirmation":
-                    logger.info("[Agent] Suppressing Claude's message - multi-food form is the UI")
-                    message_content = ""
+                    logger.info("[Agent] Showing search indicator for multi-food form")
+                    message_content = "Searching database..."
 
                 # Fallback if Claude returns empty response (shouldn't happen but be safe)
                 if not message_content.strip():

@@ -228,36 +228,51 @@
         </span>
       </button>
       
-      <button
-        on:click={handleQuantityClick}
-        class="px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg font-medium whitespace-nowrap"
+      <!-- Quantity input (editable number) -->
+      <input
+        type="number"
+        value={item.parsed_quantity}
+        on:change={(e) => {
+          const qty = parseFloat(e.currentTarget.value);
+          if (qty > 0) {
+            dispatch('update', {
+              itemId: item.item_id,
+              updates: { parsed_quantity: qty },
+            });
+          }
+        }}
+        class="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         style="min-height: 44px;"
+        min="0.1"
+        step="0.1"
+        placeholder="Qty"
         disabled={!item.selected_food_id}
-      >
-        {item.parsed_quantity} {item.parsed_unit}
-      </button>
+      />
       
-      <!-- Weight input (grams) -->
-      <div class="flex items-center gap-1">
-        <input
-          type="number"
-          value={item.weight_grams || 100}
-          on:change={(e) => {
-            const weight = parseFloat(e.currentTarget.value) || 100;
-            if (weight > 0) {
-              dispatch('update', {
-                itemId: item.item_id,
-                updates: { weight_grams: weight },
-              });
-            }
-          }}
-          class="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          style="min-height: 44px;"
-          min="1"
-          placeholder="100"
-        />
-        <span class="text-sm text-gray-600 whitespace-nowrap">g</span>
-      </div>
+      <!-- Unit dropdown (conversions allowed for this food) -->
+      <select
+        value={item.parsed_unit}
+        on:change={(e) => {
+          const newUnit = e.currentTarget.value;
+          dispatch('update', {
+            itemId: item.item_id,
+            updates: { parsed_unit: newUnit },
+          });
+        }}
+        class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+        style="min-height: 44px;"
+        disabled={!item.selected_food_id || !item.portions || item.portions.length === 0}
+      >
+        {#if item.portions && item.portions.length > 0}
+          {#each item.portions as portion}
+            <option value={portion.unit_name || portion.modifier || 'unknown'}>
+              {portion.modifier || portion.unit_name || 'unknown'}
+            </option>
+          {/each}
+        {:else}
+          <option value={item.parsed_unit}>{item.parsed_unit}</option>
+        {/if}
+      </select>
       
       <button
         on:click={handleEdit}

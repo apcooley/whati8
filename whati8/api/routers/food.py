@@ -127,8 +127,8 @@ async def create_food(
         unit_name=food_data.unit,
         unit_abbreviation=food_data.unit,
         gram_weight=gram_weight_for_portion,  # User-specified or 100g default
-        modifier="serving",
-        portion_description=f"1 serving ({food_data.serving_size} {food_data.unit})",
+        modifier=None,  # No modifier for custom foods (just use unit name)
+        portion_description=f"1 {food_data.unit}",  # e.g., "1 bar"
     )
     db.add(default_portion)
     await db.commit()
@@ -247,14 +247,14 @@ async def search_foods(
         portion_items = []
         for p in food.portions:
             unit_part = p.modifier if p.modifier else p.unit_name
-            display_name = f"{float(p.amount)} {unit_part} ({float(p.gram_weight)}g)"
+            portion_description = f"{float(p.amount)} {unit_part} ({float(p.gram_weight)}g)"
             portion_items.append(PortionItem(
-                portion_id=p.id,
+                id=p.id,
                 amount=float(p.amount),
                 unit_name=p.unit_name,
                 modifier=p.modifier,
                 gram_weight=float(p.gram_weight),
-                display_name=display_name,
+                portion_description=portion_description,
             ))
 
         result_item = FoodSearchResultItem(
@@ -296,7 +296,10 @@ async def list_user_foods(
     """
     query = (
         select(Food)
-        .options(selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient))
+        .options(
+            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+            selectinload(Food.portions),  # Eagerly load portions (required for FoodResponse)
+        )
         .where(Food.created_by_user_id == current_user.id)
         .order_by(Food.created_at.desc())
     )
@@ -326,7 +329,10 @@ async def get_food(
     # Load food with all nutrients eagerly
     query = (
         select(Food)
-        .options(selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient))
+        .options(
+            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+            selectinload(Food.portions),  # Eagerly load portions (required for FoodResponse)
+        )
         .where(Food.id == food_id)
     )
 

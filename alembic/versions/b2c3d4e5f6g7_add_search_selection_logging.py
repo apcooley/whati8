@@ -27,9 +27,12 @@ def upgrade() -> None:
         sa.Column("trigram_rank", sa.Integer(), nullable=True),  # Position in trigram results (1-indexed, NULL if not in top N)
         sa.Column("semantic_rank", sa.Integer(), nullable=True),  # Position in semantic results
         sa.Column("hybrid_rank", sa.Integer(), nullable=True),  # Position in hybrid results
+        sa.Column("rerank_rank", sa.Integer(), nullable=True),  # Position in reranked results (if rerank was used)
         sa.Column("trigram_score", sa.Float(), nullable=True),  # Actual trigram similarity score
         sa.Column("semantic_score", sa.Float(), nullable=True),  # Actual semantic score
         sa.Column("hybrid_score", sa.Float(), nullable=True),  # Final hybrid score
+        sa.Column("rerank_score", sa.Float(), nullable=True),  # Rerank relevance score (if rerank was used)
+        sa.Column("rerank_used", sa.Boolean(), nullable=False, server_default="false"),  # Whether rerank was applied
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
     )
 

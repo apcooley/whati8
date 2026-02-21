@@ -70,3 +70,24 @@ class FoodLogBatchRequest(BaseRequestModel):
         ..., min_length=1, description="Foods to log"
     )
     logged_at: str | None = Field(None, description="ISO timestamp, defaults to now")
+
+
+class FoodLogBatchSummaryEntry(BaseRequestModel):
+    """Single entry for batch logging with summary (includes display info)."""
+
+    food_id: int = Field(..., gt=0, description="Selected food ID")
+    food_name: str = Field(..., description="Food name for display (e.g., 'Egg, whole, dried')")
+    quantity: float = Field(..., description="Weight in grams (required)")
+    parsed_quantity: float = Field(..., description="Original user-entered quantity (e.g., 1.0 for '1 grape')")
+    parsed_unit: str = Field(..., description="Original user-entered unit (e.g., 'grape')")
+    meal_id: int = Field(..., gt=0, description="Meal ID (validated by FK constraint)")
+    notes: str | None = Field(None, description="Optional notes")
+
+
+class FoodLogBatchSummaryRequest(BaseRequestModel):
+    """Batch food log submission WITH summary generation."""
+
+    entries: list[FoodLogBatchSummaryEntry] = Field(
+        ..., min_length=1, description="Foods to log"
+    )
+    logged_at: str | None = Field(None, description="ISO timestamp, defaults to now")

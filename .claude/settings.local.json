@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(uv sync:*)",
+      "Bash(psql:*)",
+      "Bash(uv run:*)",
+      "Bash(chmod:*)",
+      "Bash(ls:*)",
+      "Bash(/home/aaron/source/whati8/whati8/cli/__init__.py << 'EOF'\n\"\"\"CLI commands for whati8.\"\"\"\nimport click\nfrom whati8.cli.auth import auth\n\n\n@click.group\\(\\)\ndef cli\\(\\):\n    \"\"\"whati8 CLI tools.\"\"\"\n    pass\n\n\n# Register command groups\ncli.add_command\\(auth\\)\n\n\nif __name__ == \"__main__\":\n    cli\\(\\)\nEOF)",
+      "Bash(/home/aaron/source/whati8/whati8/__main__.py << 'EOF'\n\"\"\"Entry point for python -m whati8.\"\"\"\nfrom whati8.cli import cli\n\nif __name__ == \"__main__\":\n    cli\\(\\)\nEOF)",
+      "Bash(uv add:*)",
+      "Bash(uv pip list:*)",
+      "Bash(/tmp/test_cli.sh << 'EOF'\n#!/bin/bash\n\n# Test registration\necho \"Testing registration...\"\necho -e \"cliuser\\\\ncliuser@test.com\\\\npassword123\\\\npassword123\" | uv run python -m whati8 auth register\n\necho -e \"\\\\n\\\\n=========================\\\\n\"\n\n# Test login\necho \"Testing login...\"\nTOKEN=$\\(echo -e \"cliuser\\\\npassword123\" | uv run python -m whati8 auth login 2>&1 | grep \"Token:\" | cut -d' ' -f4\\)\n\necho -e \"\\\\n\\\\n=========================\\\\n\"\n\necho \"Testing whoami with token...\"\nuv run python -m whati8 auth whoami \"$TOKEN\"\nEOF)",
+      "Bash(/tmp/test_cli.sh:*)",
+      "Bash(curl:*)",
+      "Bash(jq:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZXhwIjoxNzcwNTc3ODUzfQ.4F-QyPYguDlVKvnXibs4fdyLhuQhbNcNPVYCrsbwi60\")",
+      "WebFetch(domain:fdc.nal.usda.gov)",
+      "WebFetch(domain:usda-fdc.readthedocs.io)",
+      "Bash(find:*)",
+      "Bash(./scripts/test_food_api.sh:*)",
+      "Bash(/home/aaron/source/whati8/scripts/run_all_checks.sh:*)",
+      "Bash(./scripts/test_food_log_api.sh:*)",
+      "Bash(python3:*)",
+      "Bash(ip addr:*)",
+      "Bash(pkill:*)",
+      "Bash(xargs kill:*)",
+      "Bash(./scripts/server.sh:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(./scripts/test_agent_api.sh:*)",
+      "Bash(journalctl:*)",
+      "Bash(sudo -u postgres psql:*)"
+    ]
+  }
+}

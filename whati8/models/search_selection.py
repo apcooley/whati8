@@ -1,8 +1,6 @@
 """Search selection logging model."""
 
-from datetime import datetime
-
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import relationship
 
 from whati8.database import Base
@@ -30,11 +28,16 @@ class SearchSelection(Base):
     trigram_rank = Column(Integer, nullable=True)
     semantic_rank = Column(Integer, nullable=True)
     hybrid_rank = Column(Integer, nullable=True)
+    rerank_rank = Column(Integer, nullable=True)
     
     # Scores (for analysis)
     trigram_score = Column(Float, nullable=True)
     semantic_score = Column(Float, nullable=True)
     hybrid_score = Column(Float, nullable=True)
+    rerank_score = Column(Float, nullable=True)
+    
+    # Whether reranking was used for this search
+    rerank_used = Column(Boolean, nullable=False, server_default="false")
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
     

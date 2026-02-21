@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import { multiFoodFormStore } from '../stores/multiFoodForm';
   import type { MultiFoodItem } from '../stores/multiFoodForm';
   import FoodRow from './FoodRow.svelte';
   import MealSelector from './MealSelector.svelte';
   import InlineAddFood from './InlineAddFood.svelte';
+
+  const dispatch = createEventDispatcher();
 
   export let data: {
     food_items: MultiFoodItem[];
@@ -89,15 +91,18 @@
     multiFoodFormStore.setError(null);
 
     try {
-      // Prepare batch entries with user-specified weights (default 100g)
+      // Prepare batch entries with summary info
       const entries = validItems.map(item => ({
         food_id: item.selected_food_id!,
+        food_name: item.selected_name!,
         quantity: getWeightGrams(item),
+        parsed_quantity: item.parsed_quantity,
+        parsed_unit: item.parsed_unit,
         meal_id: mealIdMap[selectedMeal] || 1,
         notes: `${item.parsed_quantity} ${item.parsed_unit}`,  // Store original unit for reference
       }));
 
-      const response = await fetch('/logs/batch', {
+      const response = await fetch('/logs/batch-summary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -115,6 +120,11 @@
       }
 
       const result = await response.json();
+      
+      // Emit the formatted summary for the chat interface
+      if (result.formatted_summary) {
+        dispatch('summary', { message: result.formatted_summary });
+      }
       
       // Success! Close the form and reset
       multiFoodFormStore.reset();

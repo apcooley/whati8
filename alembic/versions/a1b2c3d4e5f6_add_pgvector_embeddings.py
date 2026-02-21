@@ -17,17 +17,16 @@ depends_on = None
 
 def upgrade() -> None:
     # Enable pgvector extension (requires superuser or extension already available)
+    # Note: This should be run as superuser first:
+    #   sudo -u postgres psql -d whati8 -c "CREATE EXTENSION IF NOT EXISTS vector;"
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-    # Add embedding columns — 768 dimensions each
+    # Add embedding columns as vector(768) type directly
     # Cohere embed-english-v3.0 (truncated from 1024 via Matryoshka)
     # Ollama nomic-embed-text (native 768)
-    op.add_column("foods", sa.Column("embedding_cohere", sa.LargeBinary(), nullable=True))
-    op.add_column("foods", sa.Column("embedding_ollama", sa.LargeBinary(), nullable=True))
-
-    # Use raw SQL to set proper vector type (SQLAlchemy doesn't know vector natively)
-    op.execute("ALTER TABLE foods ALTER COLUMN embedding_cohere TYPE vector(768) USING embedding_cohere::vector(768)")
-    op.execute("ALTER TABLE foods ALTER COLUMN embedding_ollama TYPE vector(768) USING embedding_ollama::vector(768)")
+    # SQLAlchemy doesn't natively support vector type, so use raw SQL
+    op.execute("ALTER TABLE foods ADD COLUMN embedding_cohere vector(768)")
+    op.execute("ALTER TABLE foods ADD COLUMN embedding_ollama vector(768)")
 
     # Create HNSW indexes for fast approximate nearest neighbor search
     # HNSW is preferred over IVFFlat for small datasets (<100K)
