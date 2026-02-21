@@ -14,7 +14,8 @@ import argparse
 import asyncio
 import time
 
-from sqlalchemy import text
+import sqlalchemy as sa
+from sqlalchemy import bindparam, text
 
 from whati8.database import engine
 from whati8.services.embedding_service import (
@@ -48,10 +49,10 @@ async def store_embeddings(
         for food_id, vec in zip(food_ids, vectors):
             # Format as pgvector literal: [0.1,0.2,...]
             vec_str = "[" + ",".join(f"{v:.8f}" for v in vec) + "]"
-            await conn.execute(
-                text(f"UPDATE foods SET {column} = :vec::vector WHERE id = :id"),
-                {"vec": vec_str, "id": food_id},
-            )
+            # Use raw SQL - column name is safe (controlled by script)
+            # Can't use named params with ::cast, so format directly
+            sql_str = f"UPDATE foods SET {column} = '{vec_str}'::vector(768) WHERE id = {food_id}"
+            await conn.execute(text(sql_str))
             updated += 1
         return updated
 
