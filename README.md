@@ -10,6 +10,8 @@
 | **Database**       | SQLAlchemy (ORM)           | For robust, idiomatic database interaction.   |
 | **Data Source**    | USDA Food Data Central     | Core nutrition data provider.                 |
 | **AI/LLM**         | Anthropic Claude (default) | Natural language food parsing and resolution. |
+| **Search**         | pg_trgm + pgvector + Cohere | Hybrid trigram/semantic search with reranking. |
+| **Embeddings**     | Cohere embed-v3 / Ollama   | 768d semantic vectors (dual-provider fallback).|
 | **Authentication** | FastAPI OAuth2 + JWT       | Secure user session management.               |
 
 ---
@@ -19,6 +21,7 @@
 *   **Easy To Use:** Unlike other products which require a lot of typing, searching, and fiddling, you just type in natural text, dictate with voice, or even snap a pic of your food and it does the rest.
 *   **Highly Customizable**: Add your own foods, recipes, meals, and nutrition tracking methodology (caliories, protein, weight watchers, etc.). whati8 molds to your approach.
 *   **Database Search:** Utilizing optimized database queries and fuzzy matching for rapid food lookup. Starts with over 50,000 foods already loaded.
+*   **Hybrid Search:** Three-layer search pipeline — trigram fuzzy match, semantic embeddings (Cohere/Ollama), and Cohere Rerank 3 — with configurable strategies via `config.toml`.
 *   **Personalized Goals:** Adherence to user-defined macro targets (Protein, Carbs, Fat) and daily calorie budgets (Default: ~1850 kcal).
 *   **Secure & Scalable:** Built on a modern Python stack for maintainability and growth.
 
@@ -43,6 +46,14 @@
 - ✅ **Code Quality:** All magic numbers extracted to constants, standardized error responses, base schema classes
 - ✅ **Validation:** Strong JWT secret validation, API key format checks, enhanced Pydantic validation
 - ✅ **Testing:** 27/27 food unit tests + 41 comprehensive edge cases passing
+
+### Search Quality (Feb–Mar 2026)
+- ✅ **Hybrid Search:** Trigram + semantic embedding search with configurable weights (`config.toml`)
+- ✅ **Cohere Embeddings:** embed-english-v3 (768d) with Ollama nomic-embed-text fallback
+- ✅ **pgvector Integration:** Dual embedding columns (one per provider, not interchangeable)
+- ✅ **Cohere Rerank 3:** Configurable strategies (word_count, confidence, always, never)
+- ✅ **Search Analytics:** Logs user selections with per-method ranking for quality tuning
+- ✅ **TOML Config:** `config.toml` for search weights, rerank strategy, and thresholds
 
 ### Recent Updates (Feb 10, 2026)
 
@@ -332,6 +343,8 @@ Run the automated test suite:
 
 - **[CURRENT_STATUS.md](CURRENT_STATUS.md)** - Quick reference with current state, known issues, debugging tips (start here)
 - **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Complete implementation guide: schema design, auth system, API reference, setup instructions
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design, data flow, and design decisions
+- **[ROADMAP.md](ROADMAP.md)** - Development roadmap with phase breakdown
 - **[CLAUDE.md](CLAUDE.md)** - Instructions for Claude Code AI assistant
 - **[.env.example](.env.example)** - Environment configuration template
 - **API Docs** - Interactive documentation at http://localhost:8000/docs (when server running)
@@ -764,82 +777,10 @@ await db.commit()
 
 ## Roadmap & Next Steps
 
-1.  **Phase 1: Core Logging & Search** ✅ *(Complete)*
-    *   ✅ Project structure and README
-    *   ✅ **Flexible Domain Model** (9 tables, async SQLAlchemy 2.0)
-        - Core: User, Food, FoodLog, Recipe, RecipeIngredient
-        - Flexible: Nutrient, FoodNutrient, Meal, UserGoal (key-value)
-        - Standard data: 18 nutrients, 4 meals
-    *   ✅ Database migrations (Alembic setup with async support)
-    *   ✅ Database connection layer (async engine + session management)
-    *   ✅ Configuration management (Pydantic Settings with .env)
-    *   ✅ Setup automation scripts (database setup + verification + seeding)
-    *   ✅ **Authentication System** (Complete)
-        - Pydantic schemas for auth (UserCreate, Token, etc.)
-        - Password hashing (bcrypt), JWT tokens (python-jose)
-        - Service layer for business logic
-        - CLI commands: register, login, whoami
-        - REST API endpoints: POST /auth/register, POST /auth/login, GET /auth/me
-        - FastAPI app with OpenAPI documentation (Swagger UI + ReDoc)
-        - HTTPBearer token authentication with dependency injection
-    *   ✅ **USDA Data Import** (Complete)
-        - Bulk import script for Foundation Foods + SR Legacy
-        - 8,058 foods with 130,633 nutrient relationships
-        - CLI command: `uv run python -m whati8 import-usda`
-        - Automated download, parsing, and database insertion
-        - Nutrient ID mapping (USDA → our standard nutrients)
-    *   ✅ **Food Search API** (Complete)
-        - Pydantic schemas for food endpoints (FoodResponse, FoodSearchResult)
-        - GET /foods/search - Fuzzy search with pg_trgm (typo-tolerant)
-        - GET /foods/{id} - Food details with all nutrients
-        - Authentication required on all endpoints
-        - Pagination support (limit, offset)
-        - Similarity scoring for search results
-    *   ✅ **AI Food Resolution** (Complete)
-        - POST /foods/resolve - Natural language food parsing
-        - Anthropic Claude integration (async, rate-limited)
-        - Input sanitization for prompt injection protection
-        - Database matching with fuzzy search
-    *   ✅ **Food Logging CRUD** (Complete)
-        - POST /logs - Create food log entry
-        - GET /logs - List with filtering (date, meal, pagination)
-        - GET /logs/{id} - Get single log
-        - PUT /logs/{id} - Update log
-        - DELETE /logs/{id} - Delete log
-        - Authorization enforcement (user isolation)
+See **[ROADMAP.md](ROADMAP.md)** for the full roadmap.
 
-2.  **Phase 2: Conversational UI** ✅ *(Complete)*
-    *   ✅ **Conversational Agent** (Complete)
-        - POST /agent/chat - Main conversational endpoint
-        - Multi-turn tool calling with Claude Sonnet 4.5
-        - 6 agent tools: log_food, search_foods, resolve_foods_nl, list_logs, get_daily_summary, show_confirmation_form
-        - Conversation history management (60-min expiration, in-memory)
-        - Natural language food logging workflow
-    *   ✅ **Frontend Web App** (Complete)
-        - Svelte 4 + Tailwind CSS + Vite
-        - Mobile-first responsive design
-        - Chat interface with message history
-        - JWT authentication with login/register modal
-        - Food selection modals for disambiguation
-        - Local timezone display
-        - Production build deployed (single-server, FastAPI serves static files)
-    *   ⬜ Voice-based requests (Web Speech API)
-    *   ⬜ Recipe OCR and food recognition via photo (Claude Vision API)
+**Current phase:** Phase 3 — Dashboard & Analytics (daily nutrition views, goal/meal/recipe CRUD, visualizations).
 
-3.  **Phase 3: Dashboard & Analytics** *(Next Phase)*
-    *   ⬜ Daily nutrition dashboard (GET /dashboard/today, /dashboard/week)
-    *   ⬜ Goal management endpoints (CRUD for flexible goal types)
-    *   ⬜ Meal management endpoints (CRUD for custom meals)
-    *   ⬜ Recipe management endpoints (CRUD for user recipes)
-    *   ⬜ Nutrition visualizations and charts
-    *   ⬜ Progress tracking over time
+## Architecture
 
-4.  **Phase 4: Production Hardening**
-    *   ⬜ Conversation persistence (move from in-memory to database)
-    *   ⬜ Streaming responses (Server-Sent Events)
-    *   ⬜ PWA support (installable app)
-    *   ⬜ Offline mode with request queue
-    *   ⬜ Push notifications
-    *   ⬜ Multi-language support
-    *   ⬜ Deploy to cloud
-    *   ⬜ Alpha and Beta testing
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for system design, data flow, and key design decisions.
