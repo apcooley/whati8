@@ -57,10 +57,20 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new ApiError(
-      response.status,
-      errorData.detail || `HTTP ${response.status}`
-    );
+    let message: string;
+    if (typeof errorData.detail === 'string') {
+      message = errorData.detail;
+    } else if (Array.isArray(errorData.detail)) {
+      message = errorData.detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ');
+    } else {
+      message = `HTTP ${response.status}`;
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  // 204 No Content has no body
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json();

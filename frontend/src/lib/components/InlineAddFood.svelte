@@ -141,7 +141,7 @@
 
 <div class="border-t border-gray-200 pt-3 pb-3">
   {#if !isExpanded}
-    <button
+    <button type="button"
       on:click={handleExpand}
       class="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 hover:bg-primary-50 text-gray-600 hover:text-primary-600 font-medium transition-colors"
       style="min-height: 44px;"
@@ -166,7 +166,7 @@
             }
           }}
         />
-        <button
+        <button type="button"
           on:click={handleSubmit}
           disabled={isLoading || !inputText.trim()}
           class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
@@ -181,7 +181,7 @@
             Add
           {/if}
         </button>
-        <button
+        <button type="button"
           on:click={handleCancel}
           class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
           style="min-height: 44px;"
@@ -193,7 +193,7 @@
       {#if error}
         <div class="text-sm text-red-600 px-2 flex items-center justify-between">
           <span>{error}</span>
-          <button
+          <button type="button"
             on:click={handleOpenAddFood}
             class="ml-2 text-xs font-medium text-primary-600 hover:text-primary-700 underline whitespace-nowrap"
           >

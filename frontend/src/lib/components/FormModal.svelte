@@ -42,7 +42,7 @@
           <h3 class="text-lg font-semibold text-gray-900">
             {data.form_type === 'food_selection' ? 'Select Food' : 'Confirm Log Entry'}
           </h3>
-          <button
+          <button type="button"
             on:click={handleClose}
             class="text-gray-400 hover:text-gray-600"
           >
@@ -58,7 +58,7 @@
             <p class="text-sm text-gray-600 mb-4">Select the food you want to log:</p>
             <div class="space-y-2">
               {#each data.data.foods || [] as food}
-                <button
+                <button type="button"
                   on:click={() => handleSubmit({ food_id: food.id, food_name: food.name })}
                   class="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
                 >
@@ -100,13 +100,13 @@
               {/if}
 
               <div class="flex gap-2 pt-4">
-                <button
+                <button type="button"
                   on:click={handleClose}
                   class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   on:click={() => handleSubmit({ confirmed: true })}
                   class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                 >

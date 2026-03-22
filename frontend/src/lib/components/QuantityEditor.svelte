@@ -206,6 +206,7 @@
     <div class="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
       <h3 id="quantity-editor-title" class="text-lg font-semibold text-gray-900">Edit Quantity</h3>
       <button
+        type="button"
         on:click={handleCancel}
         class="text-gray-400 hover:text-gray-600"
         style="min-width: 44px; min-height: 44px;"
@@ -288,6 +289,7 @@
     <!-- Footer -->
     <div class="sticky bottom-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-2">
       <button
+        type="button"
         on:click={handleCancel}
         class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium"
         style="min-height: 44px;"
@@ -295,6 +297,7 @@
         Cancel
       </button>
       <button
+        type="button"
         on:click={handleSave}
         class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium"
         style="min-height: 44px;"

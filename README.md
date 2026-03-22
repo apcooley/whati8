@@ -79,10 +79,18 @@
 4. **Auto-Server-Kill** - Port conflicts resolved automatically with `--kill-existing` (default)
 5. **Bcrypt Fix** - Downgraded to 4.0.1 for passlib compatibility
 
+### Data Quality (Mar 22, 2026)
+- ✅ **Energy stored as kcal:** All nutrients stored in kcal (was kJ), no more conversion math
+- ✅ **Energy coalesce:** `COALESCE(Atwater General, Atwater Specific, Plain Energy)` — Foundation foods use nutrition-label-standard values
+- ✅ **Carb coalesce:** `COALESCE(by summation, MAX(by difference, 0))` — negative carbs clamped, summation preferred
+- ✅ **USDA dedup:** Foundation preferred over SR Legacy; dedup runs automatically during import
+- ✅ **Naive timestamps:** `logged_at` stores wall-clock time (no timezone), not UTC
+- ✅ **Multi-unit servings:** `serving_quantity` correctly splits portion weight (e.g., "4 slices = 56g" → 14g/slice)
+
 ### Test Results
-- ✅ 27 food units system tests passing (unit conversions, weight specifications)
-- ✅ 41 comprehensive edge case tests (boundary conditions, user isolation, special characters)
-- ✅ All existing tests still passing (no regressions)
+- ✅ 38 tests passing across 4 test suites (kcal migration, nutrient coalesce, naive datetime, serving quantity)
+- ✅ Plus existing tests (volume portions, recipe search, recipe portions)
+- ✅ All tests run against live PostgreSQL database
 
 ---
 

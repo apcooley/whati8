@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from whati8.models.food_log import FoodLog
     from whati8.models.meal import Meal
     from whati8.models.recipe import Recipe
+    from whati8.models.user_food import UserFood
     from whati8.models.user_goal import UserGoal
 
 
@@ -46,6 +47,10 @@ class User(Base, TimestampMixin):
         cascade="all, delete-orphan",
     )
     food_logs: Mapped[list["FoodLog"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    user_foods: Mapped[list["UserFood"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )

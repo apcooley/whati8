@@ -48,6 +48,7 @@ class FoodLogUpdate(BaseRequestModel):
 
     food_id: int | None = Field(None, description="ID of the food consumed")
     meal_id: int | None = Field(None, description="ID of the meal category")
+    unit: str | None = Field(None, description="Unit/portion for this log")
     quantity: float | None = Field(
         None, gt=0, description="Quantity consumed (in food's serving units)"
     )
@@ -75,6 +76,7 @@ class FoodLogResponse(BaseORMModel):
     food_id: int
     meal_id: int | None
     quantity: float
+    unit: str | None = None
     logged_at: datetime
     notes: str | None
     created_at: datetime

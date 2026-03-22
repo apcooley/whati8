@@ -45,7 +45,7 @@
   class="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto"
 >
   {#each alternatives as food}
-    <button
+    <button type="button"
       on:click={() => handleSelect(food)}
       class="w-full text-left px-4 py-3 hover:bg-primary-50 focus:bg-primary-50 focus:outline-none border-b border-gray-100 last:border-b-0"
       class:bg-primary-100={food.food_id === currentFoodId}
@@ -58,7 +58,7 @@
     </button>
   {/each}
   
-  <button
+  <button type="button"
     on:click={handleOther}
     class="w-full text-left px-4 py-3 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none text-primary-600 font-medium border-t border-gray-200"
     style="min-height: 44px;"

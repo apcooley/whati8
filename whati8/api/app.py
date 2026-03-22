@@ -26,6 +26,10 @@ from whati8.api.routers.agent import router as agent_router
 from whati8.api.routers.auth import router as auth_router
 from whati8.api.routers.food import router as food_router
 from whati8.api.routers.food_log import router as food_log_router
+from whati8.api.routers.profile import router as profile_router
+from whati8.api.routers.recipe import router as recipe_router
+from whati8.api.routers.summary_config import router as summary_config_router
+from whati8.api.routers.photo import router as photo_router
 from whati8.config import settings
 from whati8.database import AsyncSessionLocal
 from whati8.logging_config import get_logger, setup_logging
@@ -157,6 +161,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/auth", tags=["authentication"])
     app.include_router(food_router)  # Prefix already in router definition
     app.include_router(food_log_router)  # Prefix already in router definition
+    app.include_router(profile_router)
+    app.include_router(recipe_router)  # Prefix already in router definition
+    app.include_router(summary_config_router)
+    app.include_router(photo_router)  # Prefix already in router definition
     app.include_router(agent_router)  # Prefix already in router definition
 
     # 7. Health check endpoint
