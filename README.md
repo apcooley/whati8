@@ -87,9 +87,16 @@
 - ✅ **Naive timestamps:** `logged_at` stores wall-clock time (no timezone), not UTC
 - ✅ **Multi-unit servings:** `serving_quantity` correctly splits portion weight (e.g., "4 slices = 56g" → 14g/slice)
 
+### Copy & Move (Mar 22, 2026)
+- ✅ **Copy log** to any date/meal (`POST /logs/{id}/copy`)
+- ✅ **Move log** to different date/meal (`PATCH /logs/{id}/move`)
+- ✅ **Copy meal** — bulk copy all logs from a meal (`POST /logs/copy-meal`)
+- ✅ **Frontend UI** — context menu on log entries, copy button on meal headers
+- ✅ **Local dates** — frontend uses wall-clock date, not UTC
+
 ### Test Results
-- ✅ 38 tests passing across 4 test suites (kcal migration, nutrient coalesce, naive datetime, serving quantity)
-- ✅ Plus existing tests (volume portions, recipe search, recipe portions)
+- ✅ 312+ tests passing across all test suites
+- ✅ Includes kcal migration, nutrient coalesce, naive datetime, serving quantity, copy/move
 - ✅ All tests run against live PostgreSQL database
 
 ---

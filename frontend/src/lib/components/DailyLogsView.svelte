@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { DailyLogEntry } from '../types/profile';
+  import type { DailyLogEntry, MealGroup as MealGroupType } from '../types/profile';
   import { dailyLogsStore } from '../stores/dailyLogs';
   import { toastStore } from '../stores/toast';
   import { deleteLog, updateLog } from '../api/daily';
   import EditLogSheet from './EditLogSheet.svelte';
+  import CopyMoveSheet from './CopyMoveSheet.svelte';
+  import CopyMealSheet from './CopyMealSheet.svelte';
   import DayNavigator from './DayNavigator.svelte';
   import MealGroup from './MealGroup.svelte';
   import DailySummaryBar from './DailySummaryBar.svelte';
@@ -15,6 +17,13 @@
 
   let editEntry: import('../types/profile').DailyLogEntry | null = null;
   let editVisible = false;
+
+  let copyMoveEntry: DailyLogEntry | null = null;
+  let copyMoveMode: 'copy' | 'move' = 'copy';
+  let copyMoveVisible = false;
+
+  let copyMealGroup: MealGroupType | null = null;
+  let copyMealVisible = false;
 
   $: state = $dailyLogsStore;
 
@@ -44,6 +53,35 @@
   function handleEdit(entry: DailyLogEntry) {
     editEntry = entry;
     editVisible = true;
+  }
+
+  function handleCopy(entry: DailyLogEntry) {
+    copyMoveEntry = entry;
+    copyMoveMode = 'copy';
+    copyMoveVisible = true;
+  }
+
+  function handleMove(entry: DailyLogEntry) {
+    copyMoveEntry = entry;
+    copyMoveMode = 'move';
+    copyMoveVisible = true;
+  }
+
+  function handleCopyMeal(group: MealGroupType) {
+    copyMealGroup = group;
+    copyMealVisible = true;
+  }
+
+  async function handleCopyMoveDone() {
+    copyMoveVisible = false;
+    copyMoveEntry = null;
+    await dailyLogsStore.load();
+  }
+
+  async function handleCopyMealDone() {
+    copyMealVisible = false;
+    copyMealGroup = null;
+    await dailyLogsStore.load();
   }
 
   async function handleEditSave(e: CustomEvent<{ logId: number; quantity: number; unit: string; meal_id: number | null }>) {
@@ -104,6 +142,9 @@
               {group}
               on:delete={(e) => requestDelete(e.detail)}
               on:edit={(e) => handleEdit(e.detail)}
+              on:copy={(e) => handleCopy(e.detail)}
+              on:move={(e) => handleMove(e.detail)}
+              on:copyMeal={(e) => handleCopyMeal(e.detail)}
             />
           {/each}
         </div>
@@ -117,6 +158,23 @@
     on:save={handleEditSave}
     on:delete={handleEditDelete}
     on:close={() => { editVisible = false; editEntry = null; }}
+  />
+
+  <CopyMoveSheet
+    mode={copyMoveMode}
+    entry={copyMoveEntry}
+    currentDate={state.date}
+    visible={copyMoveVisible}
+    on:done={handleCopyMoveDone}
+    on:close={() => { copyMoveVisible = false; copyMoveEntry = null; }}
+  />
+
+  <CopyMealSheet
+    sourceDate={state.date}
+    mealGroup={copyMealGroup}
+    visible={copyMealVisible}
+    on:done={handleCopyMealDone}
+    on:close={() => { copyMealVisible = false; copyMealGroup = null; }}
   />
 
   {#if pendingDeleteId !== null}

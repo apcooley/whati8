@@ -131,7 +131,9 @@ async def create_food(
         weight_per_unit = serving_g / serving_qty
         # Generate description: unit label with per-unit weight (NO quantity prefix)
         if food_data.serving_description:
-            desc = food_data.serving_description
+            import re
+            # Strip any leading quantity prefix (e.g., "4 slices (56g)" → "slices (56g)")
+            desc = re.sub(r'^[\d.]+\s+', '', food_data.serving_description)
         else:
             # Description is the UNIT LABEL only, quantity is stored in `amount`
             desc = f"{custom_unit} ({weight_per_unit:.0f}g)"

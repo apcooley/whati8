@@ -75,8 +75,9 @@ The core loop: register foods once, log them fast every day, see what you ate.
 **📝 Log a Food**
 - [x] Search-as-you-type from profile foods only (small set, instant, no AI needed)
 - [x] Inline fallback: add icon on right, automatically searches
-- [ ] Recent/frequent foods section at top (tap to re-log)
-- [ ] "Copy yesterday's [meal]" shortcut
+- [x] Recent/frequent foods sorted by COALESCE(last_used, created_at) — already implemented
+- [x] Copy/move individual logs to any date/meal
+- [x] Copy entire meal to another date
 - [x] Quantity + unit selector (reuse existing smart unit system)
 - [x] Meal assignment (Breakfast/Lunch/Dinner/Snack + custom)
 
@@ -151,7 +152,9 @@ The core loop: register foods once, log them fast every day, see what you ate.
 - [ ] Frontend CI — no build pipeline; manual `npx vite build`
 - [ ] API versioning — no `/v1/` prefix yet
 - [ ] Seed data guard — meals table can get wiped by re-imports; need seed check on startup
+- [x] Frontend local date fix — use getFullYear/getMonth/getDate instead of toISOString (UTC)
+- [x] Portion description format — unit label only, no quantity prefix; backend regex safety net
 
 ---
 
-*Last updated: 2026-03-22*
+*Last updated: 2026-03-22 (evening)*

@@ -4,7 +4,14 @@
 
   export let entry: DailyLogEntry;
 
-  const dispatch = createEventDispatcher<{ delete: number; edit: DailyLogEntry }>();
+  const dispatch = createEventDispatcher<{ 
+    delete: number; 
+    edit: DailyLogEntry;
+    copy: DailyLogEntry;
+    move: DailyLogEntry;
+  }>();
+
+  let showMenu = false;
 
   const NUTRIENT_EMOJI: Record<string, string> = {
     'calories': '🔥', 'protein': '🥩', 'fiber': '🌾', 'carbs': '🍞', 'fat': '🧈',
@@ -48,25 +55,63 @@
     </div>
   </div>
 
-  <button
-    type="button"
-    on:click={() => dispatch('edit', entry)}
-    class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-blue-500 hover:bg-blue-50"
-    aria-label="Edit log"
-  >
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-    </svg>
-  </button>
+  <div class="relative">
+    <button
+      type="button"
+      on:click={() => showMenu = !showMenu}
+      class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-gray-600 hover:bg-gray-100"
+      aria-label="More options"
+    >
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <circle cx="12" cy="5" r="2" />
+        <circle cx="12" cy="12" r="2" />
+        <circle cx="12" cy="19" r="2" />
+      </svg>
+    </button>
 
-  <button
-    type="button"
-    on:click={() => dispatch('delete', entry.id)}
-    class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50"
-    aria-label="Delete log"
-  >
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-    </svg>
-  </button>
+    {#if showMenu}
+      <!-- Backdrop -->
+      <div 
+        class="fixed inset-0 z-10" 
+        on:click={() => showMenu = false}
+        on:keydown={(e) => e.key === 'Escape' && (showMenu = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close menu"
+      ></div>
+
+      <!-- Dropdown menu -->
+      <div class="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[140px] z-20">
+        <button
+          type="button"
+          on:click={() => { showMenu = false; dispatch('edit', entry); }}
+          class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+        >
+          <span>✏️</span> Edit
+        </button>
+        <button
+          type="button"
+          on:click={() => { showMenu = false; dispatch('copy', entry); }}
+          class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+        >
+          <span>📋</span> Copy to...
+        </button>
+        <button
+          type="button"
+          on:click={() => { showMenu = false; dispatch('move', entry); }}
+          class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+        >
+          <span>↗️</span> Move to...
+        </button>
+        <div class="border-t border-gray-100 my-1"></div>
+        <button
+          type="button"
+          on:click={() => { showMenu = false; dispatch('delete', entry.id); }}
+          class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+        >
+          <span>🗑️</span> Delete
+        </button>
+      </div>
+    {/if}
+  </div>
 </div>

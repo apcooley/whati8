@@ -158,21 +158,16 @@
     }
     
     const qty = parseFloat(e.custom_qty) || 1;
+    const weightPerUnit = qty > 0 ? weightG / qty : weightG;
+    
+    // Description is the UNIT LABEL only — no quantity prefix.
+    // Quantity goes in `default_quantity`, not in the description.
     let desc = '';
     if (unit) {
-      desc = `${qty} ${unit}`;
-      const parts: string[] = [];
-      if (volMl) {
-        // Include original volume amount + unit in description
-        parts.push(`${e.volume_amount} ${e.volume_unit}`);
-      }
-      parts.push(`${weightG}g`);
-      desc += ` (${parts.join(', ')})`;
+      desc = `${unit} (${Math.round(weightPerUnit)}g)`;
     } else {
       desc = `${weightG}g`;
     }
-    
-    const weightPerUnit = qty > 0 ? weightG / qty : weightG;
     
     dispatch('save', {
       item: {

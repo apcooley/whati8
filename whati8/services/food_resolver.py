@@ -374,9 +374,15 @@ Extract all food items from the input text."""
         """
         options = []
         for p in portions:
-            # Build display name
+            # Build display name - strip quantity prefix to avoid duplication
+            # e.g., "6 crackers" → "crackers" (the 6 is stored in amount field)
             unit_part = p.modifier if p.modifier else p.unit_name
-            display_name = f"{float(p.amount)} {unit_part} ({float(p.gram_weight)}g)"
+            
+            # Strip leading digits followed by space (e.g., "6 crackers" → "crackers")
+            # But preserve units like "113g" (no space after digits)
+            cleaned_unit = _re.sub(r'^\d+(\.\d+)?\s+', '', unit_part)
+            
+            display_name = f"{cleaned_unit} ({float(p.gram_weight)}g)"
 
             option = PortionOption(
                 portion_id=p.id,

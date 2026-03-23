@@ -5,8 +5,12 @@
 
   const dispatch = createEventDispatcher<{ change: string }>();
 
+  function localDateStr(d: Date = new Date()): string {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   $: dateObj = new Date(date + 'T12:00:00');
-  $: isToday = date === new Date().toISOString().slice(0, 10);
+  $: isToday = date === localDateStr();
 
   $: formatted = dateObj.toLocaleDateString('en-US', {
     weekday: 'short',
@@ -18,7 +22,7 @@
   function offsetDate(days: number) {
     const d = new Date(date + 'T12:00:00');
     d.setDate(d.getDate() + days);
-    dispatch('change', d.toISOString().slice(0, 10));
+    dispatch('change', localDateStr(d));
   }
 </script>
 

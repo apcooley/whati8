@@ -164,7 +164,11 @@ export function getDisplayName(uf: UserFood): string {
   return uf.nickname ?? uf.food.name;
 }
 
-/** Get default serving label e.g. "2 piece" or "100 g". */
+/** Get default serving label e.g. "2 piece" or "100 g". 
+ * 
+ * Handles cases where default_unit already contains quantity prefix
+ * to avoid duplication like "1 1 Bar" or "6 6 crackers".
+ */
 export function getServingLabel(uf: UserFood): string {
   const qty = uf.default_quantity ?? uf.food.serving_size;
   const unit = uf.default_unit ?? uf.food.unit;

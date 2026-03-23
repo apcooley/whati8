@@ -33,3 +33,24 @@ export async function updateLog(
     body: JSON.stringify(data),
   });
 }
+
+export async function copyLog(logId: number, targetDate: string, mealId?: number) {
+  return apiRequest(`/logs/${logId}/copy`, {
+    method: 'POST',
+    body: JSON.stringify({ target_date: targetDate, meal_id: mealId }),
+  });
+}
+
+export async function moveLog(logId: number, targetDate?: string, mealId?: number) {
+  return apiRequest(`/logs/${logId}/move`, {
+    method: 'PATCH',
+    body: JSON.stringify({ target_date: targetDate, meal_id: mealId }),
+  });
+}
+
+export async function copyMeal(sourceDate: string, sourceMealId: number, targetDate: string, targetMealId?: number) {
+  return apiRequest('/logs/copy-meal', {
+    method: 'POST',
+    body: JSON.stringify({ source_date: sourceDate, source_meal_id: sourceMealId, target_date: targetDate, target_meal_id: targetMealId }),
+  });
+}
