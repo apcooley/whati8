@@ -2,6 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import type { FoodSearchResultItem } from '../types/profile';
   import { STANDARD_MEALS } from '../types/profile';
+  import { parseFraction } from '../utils/parseFraction';
+  import FractionInput from './FractionInput.svelte';
 
   export let food: FoodSearchResultItem | null = null;
   export let visible = false;
@@ -19,7 +21,8 @@
   }>();
 
   let nickname = '';
-  let default_quantity: number | null = null;
+  let quantityStr = '';
+  $: default_quantity = parseFraction(quantityStr);
   let selectedPortionIndex = 0;
   let default_meal_id: number | null = null;
   let is_favorite = false;
@@ -77,7 +80,7 @@
     lastFoodId = food.id;
     nickname = '';
     selectedPortionIndex = 0;
-    default_quantity = portionOptions[0]?.default_qty ?? 1;
+    quantityStr = String(portionOptions[0]?.default_qty ?? 1);
     default_meal_id = null;
     is_favorite = false;
   }
@@ -85,7 +88,7 @@
   // When portion selection changes, update quantity
   function onPortionChange() {
     const opt = portionOptions[selectedPortionIndex];
-    if (opt) default_quantity = opt.default_qty;
+    if (opt) quantityStr = String(opt.default_qty);
   }
 
   function close() {
@@ -153,16 +156,9 @@
 
       <!-- Default serving -->
       <div class="flex gap-3">
-        <div class="w-24">
-          <label class="block text-sm font-medium text-gray-700 mb-1.5" for="register-qty">Qty</label>
-          <input
-            id="register-qty"
-            type="number"
-            bind:value={default_quantity}
-            min="0.01"
-            step="0.5"
-            class="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-center"
-          />
+        <div class="flex-1 min-w-0">
+          <label class="block text-sm font-medium text-gray-700 mb-1.5">Qty</label>
+          <FractionInput bind:value={quantityStr} />
         </div>
         <div class="flex-1">
           <label class="block text-sm font-medium text-gray-700 mb-1.5" for="register-unit">Unit</label>

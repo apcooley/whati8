@@ -12,11 +12,15 @@
   import PhotoCapture from './PhotoCapture.svelte';
   import PhotoResults from './PhotoResults.svelte';
   import RecipeBuilder from './RecipeBuilder.svelte';
+  import RecipeListView from './RecipeListView.svelte';
   import type { RecognitionResult } from '../api/photo';
   import type { Recipe } from '../api/recipe';
 
   let mode: 'search' | 'manual' | 'recipe' = 'search';
+  let recipeMode: 'list' | 'create' | 'edit' = 'list';
+  let editingRecipeId: number | null = null;
   let photoResult: RecognitionResult | null = null;
+  let recipeListViewRef: RecipeListView;
   let selectedFood: FoodSearchResultItem | null = null;
   let sheetVisible = false;
   let initialQuery = '';
@@ -181,8 +185,29 @@
     const recipe = e.detail;
     toastStore.success(`Recipe "${recipe.name}" saved!`);
     profileFoodsStore.invalidate();
-    mode = 'search';
-    navStore.goTo('log');
+    recipeMode = 'list';
+    if (recipeListViewRef) {
+      recipeListViewRef.refresh();
+    }
+  }
+
+  function handleRecipeClose() {
+    recipeMode = 'list';
+    editingRecipeId = null;
+  }
+
+  function handleRecipeCreate() {
+    recipeMode = 'create';
+    editingRecipeId = null;
+  }
+
+  function handleRecipeEdit(e: CustomEvent<number>) {
+    recipeMode = 'edit';
+    editingRecipeId = e.detail;
+  }
+
+  function handleRecipeDeleted() {
+    // RecipeListView already refreshed its list
   }
 </script>
 
@@ -250,12 +275,21 @@
         <ManualFoodForm on:created={handleManualCreated} on:cancel={() => mode = 'search'} />
       </div>
     {:else if mode === 'recipe'}
-      <RecipeBuilder
-        recipeId={null}
-        prefillLines={[]}
-        on:saved={handleRecipeSaved}
-        on:close={() => mode = 'search'}
-      />
+      {#if recipeMode === 'list'}
+        <RecipeListView
+          bind:this={recipeListViewRef}
+          on:create={handleRecipeCreate}
+          on:edit={handleRecipeEdit}
+          on:deleted={handleRecipeDeleted}
+        />
+      {:else}
+        <RecipeBuilder
+          recipeId={recipeMode === 'edit' ? editingRecipeId : null}
+          prefillLines={[]}
+          on:saved={handleRecipeSaved}
+          on:close={handleRecipeClose}
+        />
+      {/if}
     {/if}
   </div>
 

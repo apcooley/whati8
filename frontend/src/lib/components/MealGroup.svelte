@@ -20,8 +20,35 @@
     Snack: '🍎',
   };
 
+  const NUTRIENT_EMOJI: Record<string, string> = {
+    'calories': '🔥', 'protein': '🥩', 'fiber': '🌾', 'carbs': '🍞', 'fat': '🧈',
+  };
+
+  function getEmoji(name: string): string {
+    const lower = name.toLowerCase();
+    for (const [key, emoji] of Object.entries(NUTRIENT_EMOJI)) {
+      if (lower.includes(key)) return emoji;
+    }
+    return name.replace(/\s*points?$/i, '').trim().slice(0, 2).toUpperCase();
+  }
+
+  function isText(name: string): boolean {
+    return !Object.keys(NUTRIENT_EMOJI).some(k => name.toLowerCase().includes(k));
+  }
+
   $: emoji = MEAL_EMOJI[group.meal.name] ?? '🍽️';
-  $: totalCals = group.logs.reduce((sum, l) => sum + (l.calories ?? 0), 0);
+
+  // Aggregate summary_nutrients across all logs in this meal
+  $: mealTotals = (() => {
+    const totals: Record<string, { name: string; value: number }> = {};
+    for (const log of group.logs) {
+      for (const sn of (log.summary_nutrients ?? [])) {
+        if (!totals[sn.name]) totals[sn.name] = { name: sn.name, value: 0 };
+        totals[sn.name].value += sn.value;
+      }
+    }
+    return Object.values(totals).filter(t => t.value !== 0);
+  })();
 </script>
 
 <div class="mb-2">
@@ -44,8 +71,14 @@
           <span>📋</span> Copy
         </button>
       {/if}
-      {#if totalCals > 0}
-        <span class="text-xs text-gray-500 font-medium">🔥 {Math.round(totalCals)}</span>
+      {#if mealTotals.length > 0}
+        <span class="flex items-center gap-1.5 text-xs text-gray-500">
+          {#each mealTotals as t}
+            <span title={t.name}>
+              {#if isText(t.name)}<code class="font-mono text-[10px] bg-gray-100 px-0.5 rounded">{getEmoji(t.name)}</code>{:else}{getEmoji(t.name)}{/if}<span class="font-medium">{Math.round(t.value)}</span>
+            </span>
+          {/each}
+        </span>
       {/if}
     </div>
   </div>

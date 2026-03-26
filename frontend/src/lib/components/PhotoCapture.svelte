@@ -8,14 +8,9 @@
     close: void;
   }>();
 
-  let cameraInput: HTMLInputElement;
   let uploadInput: HTMLInputElement;
   let loading = false;
   let preview: string | null = null;
-
-  function openCamera() {
-    cameraInput?.click();
-  }
 
   function openUpload() {
     uploadInput?.click();
@@ -45,17 +40,6 @@
   }
 </script>
 
-<!-- Camera input (opens camera on mobile) -->
-<input
-  type="file"
-  accept="image/*"
-  capture="environment"
-  bind:this={cameraInput}
-  on:change={handleFile}
-  class="hidden"
-/>
-
-<!-- Upload input (opens file picker / gallery) -->
 <input
   type="file"
   accept="image/*"
@@ -79,28 +63,14 @@
   </div>
 {/if}
 
-<div class="grid grid-cols-2 gap-2">
-  <button type="button"
-    on:click={openCamera}
-    disabled={loading}
-    class="py-3 px-4 bg-white border border-gray-200 rounded-xl text-sm text-left flex items-center gap-3 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
-  >
-    <span class="text-2xl">📷</span>
-    <div>
-      <p class="font-medium text-gray-900">Take Photo</p>
-      <p class="text-xs text-gray-500">Use camera</p>
-    </div>
-  </button>
-
-  <button type="button"
-    on:click={openUpload}
-    disabled={loading}
-    class="py-3 px-4 bg-white border border-gray-200 rounded-xl text-sm text-left flex items-center gap-3 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
-  >
-    <span class="text-2xl">🖼️</span>
-    <div>
-      <p class="font-medium text-gray-900">Upload Photo</p>
-      <p class="text-xs text-gray-500">From gallery</p>
-    </div>
-  </button>
-</div>
+<button type="button"
+  on:click={openUpload}
+  disabled={loading}
+  class="w-full py-3 px-4 bg-white border border-gray-200 rounded-xl text-sm text-left flex items-center gap-3 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
+>
+  <span class="text-2xl">📷</span>
+  <div>
+    <p class="font-medium text-gray-900">Upload Photo</p>
+    <p class="text-xs text-gray-500">Camera, gallery, or file</p>
+  </div>
+</button>

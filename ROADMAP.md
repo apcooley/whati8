@@ -157,4 +157,4 @@ The core loop: register foods once, log them fast every day, see what you ate.
 
 ---
 
-*Last updated: 2026-03-22 (evening)*
+*Last updated: 2026-03-25*

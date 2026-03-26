@@ -1,9 +1,15 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import RecipeIngredientRow from './RecipeIngredientRow.svelte';
   import PhotoCapture from './PhotoCapture.svelte';
-  import { createRecipe } from '../api/recipe';
-  import type { Recipe, CreateRecipePayload } from '../api/recipe';
+  import { 
+    createRecipe, 
+    getRecipe, 
+    updateRecipe, 
+    addIngredient as addIngredientToRecipe, 
+    removeIngredient as removeIngredientFromRecipe 
+  } from '../api/recipe';
+  import type { Recipe, CreateRecipePayload, RecipeIngredient } from '../api/recipe';
   import { recognizePhoto } from '../api/photo';
   import type { RecognitionResult } from '../api/photo';
   import { toastStore } from '../stores/toast';
@@ -20,6 +26,7 @@
     id: string;
     state: 'editing' | 'locked';
     data: {
+      ingredient_id?: number; // For tracking existing ingredients
       food_id?: number;
       food_name?: string;
       quantity?: number;
@@ -35,6 +42,9 @@
   let ingredients: IngredientRow[] = [];
   let saving = false;
   let showPhotoCapture = false;
+  let loadedRecipe: Recipe | null = null;
+  let loadedIngredients: RecipeIngredient[] = [];
+  let perServingNutrition: string | null = null;
 
   // Initialize with prefill lines
   if (prefillLines.length > 0) {
@@ -44,6 +54,47 @@
       data: { searchText: line },
     }));
   }
+
+  // Load recipe if editing
+  onMount(async () => {
+    if (recipeId !== null) {
+      try {
+        loadedRecipe = await getRecipe(recipeId);
+        recipeName = loadedRecipe.name;
+        servings = loadedRecipe.servings;
+        servingUnit = loadedRecipe.serving_unit;
+        
+        // Store loaded ingredients for comparison
+        loadedIngredients = [...loadedRecipe.ingredients];
+        
+        // Populate ingredients as locked rows
+        ingredients = loadedRecipe.ingredients.map((ing) => ({
+          id: `loaded-${ing.id}`,
+          state: 'locked' as const,
+          data: {
+            ingredient_id: ing.id,
+            food_id: ing.food_id,
+            food_name: ing.food_name,
+            quantity: ing.quantity,
+            unit: ing.unit,
+            portion_description: ing.portion_description,
+          },
+        }));
+
+        // Format per-serving nutrition
+        const ps = loadedRecipe.per_serving;
+        const parts = [`🔥 ${Math.round(ps.calories)} cal`];
+        if (ps.protein_g > 0) parts.push(`🥩 ${Math.round(ps.protein_g)}g protein`);
+        if (ps.carbs_g > 0) parts.push(`🍞 ${Math.round(ps.carbs_g)}g carbs`);
+        if (ps.fat_g > 0) parts.push(`🧈 ${Math.round(ps.fat_g)}g fat`);
+        if (ps.fiber_g > 0) parts.push(`🌾 ${Math.round(ps.fiber_g)}g fiber`);
+        perServingNutrition = parts.join(' · ');
+      } catch (err: any) {
+        toastStore.error(err?.message || 'Failed to load recipe');
+        dispatch('close');
+      }
+    }
+  });
 
   function addIngredient() {
     ingredients = [
@@ -98,21 +149,69 @@
 
     saving = true;
     try {
-      const payload: CreateRecipePayload = {
-        name: recipeName.trim(),
-        servings,
-        serving_unit: servingUnit.trim() || 'serving',
-        ingredients: lockedIngredients.map(i => ({
-          food_id: i.data.food_id!,
-          quantity: i.data.quantity!,
-          unit: i.data.unit!,
-          portion_description: i.data.portion_description!,
-        })),
-      };
+      if (recipeId === null) {
+        // Create mode
+        const payload: CreateRecipePayload = {
+          name: recipeName.trim(),
+          servings,
+          serving_unit: servingUnit.trim() || 'serving',
+          ingredients: lockedIngredients.map(i => ({
+            food_id: i.data.food_id!,
+            quantity: i.data.quantity!,
+            unit: i.data.unit!,
+            portion_description: i.data.portion_description!,
+          })),
+        };
 
-      const recipe = await createRecipe(payload);
-      toastStore.success(`Recipe "${recipe.name}" created!`);
-      dispatch('saved', recipe);
+        const recipe = await createRecipe(payload);
+        toastStore.success(`Recipe "${recipe.name}" created!`);
+        dispatch('saved', recipe);
+      } else {
+        // Edit mode - compare and update
+        const currentIngredientIds = new Set(
+          lockedIngredients
+            .filter(i => i.data.ingredient_id !== undefined)
+            .map(i => i.data.ingredient_id!)
+        );
+        const loadedIngredientIds = new Set(loadedIngredients.map(i => i.id));
+
+        // Removed ingredients
+        for (const loaded of loadedIngredients) {
+          if (!currentIngredientIds.has(loaded.id)) {
+            await removeIngredientFromRecipe(recipeId, loaded.id);
+          }
+        }
+
+        // New ingredients
+        for (const ing of lockedIngredients) {
+          if (ing.data.ingredient_id === undefined) {
+            await addIngredientToRecipe(recipeId, {
+              food_id: ing.data.food_id!,
+              quantity: ing.data.quantity!,
+              unit: ing.data.unit!,
+              portion_description: ing.data.portion_description!,
+            });
+          }
+        }
+
+        // Update recipe metadata if changed
+        if (
+          recipeName.trim() !== loadedRecipe?.name ||
+          servings !== loadedRecipe?.servings ||
+          servingUnit.trim() !== loadedRecipe?.serving_unit
+        ) {
+          await updateRecipe(recipeId, {
+            name: recipeName.trim(),
+            servings,
+            serving_unit: servingUnit.trim() || 'serving',
+          });
+        }
+
+        // Reload recipe to get updated nutrition
+        const updatedRecipe = await getRecipe(recipeId);
+        toastStore.success(`Recipe "${updatedRecipe.name}" updated!`);
+        dispatch('saved', updatedRecipe);
+      }
     } catch (err: any) {
       toastStore.error(err?.message || 'Failed to save recipe');
     } finally {
@@ -147,7 +246,7 @@
 <div class="flex flex-col h-full bg-gray-50">
   <!-- Header -->
   <div class="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-4">
-    <h2 class="text-lg font-bold text-gray-900">Create Recipe</h2>
+    <h2 class="text-lg font-bold text-gray-900">{recipeId === null ? 'Create Recipe' : 'Edit Recipe'}</h2>
     <p class="text-sm text-gray-500 mt-0.5">Build your recipe from ingredients</p>
   </div>
 
@@ -219,7 +318,11 @@
     <!-- Nutrition preview -->
     <div class="bg-white rounded-xl p-4">
       <h3 class="text-sm font-bold text-gray-900 mb-2">Per Serving</h3>
-      <p class="text-xs text-gray-500">Save to calculate nutrition</p>
+      {#if perServingNutrition}
+        <p class="text-xs text-gray-700">{perServingNutrition}</p>
+      {:else}
+        <p class="text-xs text-gray-500">Save to calculate nutrition</p>
+      {/if}
     </div>
   </div>
 

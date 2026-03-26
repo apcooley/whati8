@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { RecognizedItem } from '../api/photo';
+  import { parseFraction } from '../utils/parseFraction';
 
   export let items: RecognizedItem[] = [];
 
@@ -89,8 +90,11 @@
       // Parse quantity from serving description: "6 crackers" → qty=6
       let customQty = '1';
       if (customUnit) {
-        const qtyMatch = (item.serving_description || '').match(/^([\d.]+)\s/);
-        if (qtyMatch) customQty = qtyMatch[1];
+        const qtyMatch = (item.serving_description || '').match(/^([\d\s/.]+)\s*(?=[a-zA-Z])/);
+        if (qtyMatch) {
+          const parsed = parseFraction(qtyMatch[1].trim());
+          if (parsed) customQty = qtyMatch[1].trim();
+        }
       }
 
       return {
@@ -101,7 +105,7 @@
         volume_unit: volumeUnit,
         weight_g: String(item.serving_size_g || 100),
         nutrients,
-        expanded: extra.length > 0,
+        expanded: false,
         extraNutrients: extra,
       };
     });
@@ -142,7 +146,7 @@
     // Convert volume amount + unit to mL
     let volMl: number | null = null;
     if (e.volume_amount && e.volume_unit) {
-      const amount = parseFloat(e.volume_amount);
+      const amount = parseFraction(e.volume_amount);
       const factor = VOLUME_TO_ML[e.volume_unit];
       if (amount && factor) {
         volMl = amount * factor;
@@ -157,7 +161,7 @@
       cleanNutrients[k] = (typeof v === 'number' && !isNaN(v)) ? v : 0;
     }
     
-    const qty = parseFloat(e.custom_qty) || 1;
+    const qty = parseFraction(e.custom_qty) ?? 1;
     const weightPerUnit = qty > 0 ? weightG / qty : weightG;
     
     // Description is the UNIT LABEL only — no quantity prefix.
@@ -210,7 +214,7 @@
       <div class="grid grid-cols-2 gap-2">
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">Qty per serving</label>
-          <input type="number" bind:value={item.custom_qty} step="any" min="0.1"
+          <input bind:value={item.custom_qty} type="text" inputmode="text"
             class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm" />
         </div>
         <div>
@@ -224,7 +228,7 @@
     <div class="grid grid-cols-2 gap-2">
       <div>
         <label class="block text-xs font-medium text-gray-500 mb-1">Volume amount <span class="text-gray-400">(optional)</span></label>
-        <input type="number" bind:value={item.volume_amount} step="any" min="0" placeholder="e.g. 0.75"
+        <input bind:value={item.volume_amount} type="text" inputmode="text" placeholder="e.g. 0.75"
           class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm" />
       </div>
       <div>

@@ -22,6 +22,9 @@ Rules for serving size:
 - Include volume if printed/obvious (e.g. "11 fl oz")
 - Include weight if printed; if not printed, estimate weight in grams
 - Format: "1 bottle (11 fl oz, 335g)" or "1 cup (240g)"
+- IMPORTANT: Preserve fractions exactly as printed (e.g. "1/3 cup", "2/3 cup", "1/4 tsp")
+- Do NOT convert fractions to decimals in serving_description
+- Do NOT drop the numerator (e.g. "1/3 cup" not "3 cup")
 
 Return ALL nutrients you can find or estimate. Required: calories, protein, fat, carbs, fiber.
 Optional (include if on label or estimable): saturated_fat, trans_fat, cholesterol_mg, sodium_mg, sugars, added_sugars, vitamin_d_mcg, calcium_mg, iron_mg, potassium_mg.

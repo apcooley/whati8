@@ -87,6 +87,15 @@
 - ✅ **Naive timestamps:** `logged_at` stores wall-clock time (no timezone), not UTC
 - ✅ **Multi-unit servings:** `serving_quantity` correctly splits portion weight (e.g., "4 slices = 56g" → 14g/slice)
 
+### UX Improvements (Mar 24-25, 2026)
+- ✅ **Fraction input** — decimal/fraction toggle on qty fields, two backing strings, auto-converts on switch
+- ✅ **Recipe editing** — full edit mode for recipes (load, modify ingredients, save diffs)
+- ✅ **No pinch zoom** — viewport locked for app-like feel
+- ✅ **Photo upload simplified** — single button (OS handles camera/gallery/file choice)
+- ✅ **Collapsed extra nutrients** — photo results start with additional nutrients hidden
+- ✅ **WW formula fix** — per-entry evaluation then sum (nonlinear formulas like WW points)
+- ✅ **Meal group summaries** — emoji nutrient totals per meal, matching individual entry format
+
 ### Copy & Move (Mar 22, 2026)
 - ✅ **Copy log** to any date/meal (`POST /logs/{id}/copy`)
 - ✅ **Move log** to different date/meal (`PATCH /logs/{id}/move`)

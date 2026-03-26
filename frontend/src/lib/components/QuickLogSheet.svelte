@@ -2,6 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import type { UserFood } from '../types/profile';
   import { getDisplayName, getFoodCalPerGram, STANDARD_MEALS } from '../types/profile';
+  import { parseFraction } from '../utils/parseFraction';
+  import FractionInput from './FractionInput.svelte';
 
   export let userFood: UserFood | null = null;
   export let visible = false;
@@ -11,7 +13,8 @@
     close: void;
   }>();
 
-  let quantity = 1;
+  let quantityStr = '1';
+  $: quantity = parseFraction(quantityStr) ?? 1;
   let selectedPortionIndex = 0;
   let meal_id: number | null = null;
   let submitting = false;
@@ -79,14 +82,14 @@
       const matchIdx = portionOptions.findIndex(o => o.label === savedUnit);
       if (matchIdx >= 0) {
         selectedPortionIndex = matchIdx;
-        quantity = userFood.default_quantity ?? portionOptions[matchIdx].default_qty;
+        quantityStr = String(userFood.default_quantity ?? portionOptions[matchIdx].default_qty);
       } else {
         selectedPortionIndex = 0;
-        quantity = userFood.default_quantity ?? portionOptions[0]?.default_qty ?? 1;
+        quantityStr = String(userFood.default_quantity ?? portionOptions[0]?.default_qty ?? 1);
       }
     } else {
       selectedPortionIndex = 0;
-      quantity = userFood.default_quantity ?? portionOptions[0]?.default_qty ?? 1;
+      quantityStr = String(userFood.default_quantity ?? portionOptions[0]?.default_qty ?? 1);
     }
   }
 
@@ -103,7 +106,7 @@
 
   function onPortionChange() {
     const opt = portionOptions[selectedPortionIndex];
-    if (opt) quantity = opt.default_qty;
+    if (opt) quantityStr = String(opt.default_qty);
   }
 
   function close() {
@@ -150,18 +153,11 @@
     <div class="px-4 py-4 space-y-4">
       <!-- Quantity + Unit -->
       <div class="flex gap-3">
-        <div class="w-24">
-          <label class="block text-xs font-medium text-gray-600 mb-1.5" for="log-qty">Qty</label>
-          <input
-            id="log-qty"
-            type="number"
-            bind:value={quantity}
-            min="0.01"
-            step="0.5"
-            class="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-center text-lg font-medium"
-          />
+        <div class="flex-1 min-w-0">
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">Qty</label>
+          <FractionInput bind:value={quantityStr} />
         </div>
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <label class="block text-xs font-medium text-gray-600 mb-1.5" for="log-unit">Unit</label>
           <select
             id="log-unit"

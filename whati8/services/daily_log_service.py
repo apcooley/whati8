@@ -482,11 +482,26 @@ class DailyLogService:
                         val = data["value"]
                         friendly_values[friendly_key] = val
 
+            # Pre-compute per-log friendly values for formula metrics
+            # Formulas are nonlinear (rounding), so f(a)+f(b) != f(a+b)
+            # We must evaluate per-log and sum the results
+            per_log_friendly: list[dict[str, float]] = []
+            for log in logs:
+                log_vals: dict[str, float] = {}
+                for fn in log.food.food_nutrients:
+                    scaled = float(fn.amount_per_serving * _portion_scale(log, log.food))
+                    fn_friendly, _ = get_friendly_name(fn.nutrient.name)
+                    for fkey, usda_name in FRIENDLY_TO_USDA.items():
+                        fn2, _ = get_friendly_name(usda_name)
+                        if fn_friendly == fn2:
+                            log_vals[fkey] = log_vals.get(fkey, 0) + scaled
+                per_log_friendly.append(log_vals)
+
             summary_nutrients = []
             for item in config_items:
                 if item.formula:
-                    # Custom formula metric
-                    value = evaluate_formula(item.formula, friendly_values) or 0.0
+                    # Sum per-log formula evaluations (nonlinear formulas like WW points)
+                    value = sum(evaluate_formula(item.formula, lv) or 0.0 for lv in per_log_friendly)
                 elif item.nutrient_id:
                     # Standard nutrient — look up in totals
                     value = nutrient_totals.get(item.nutrient_id, {}).get("value", 0.0)

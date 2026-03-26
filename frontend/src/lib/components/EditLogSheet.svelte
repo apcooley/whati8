@@ -3,6 +3,8 @@
   import type { DailyLogEntry } from '../types/profile';
   import { STANDARD_MEALS } from '../types/profile';
   import { apiRequest } from '../api/client';
+  import { parseFraction } from '../utils/parseFraction';
+  import FractionInput from './FractionInput.svelte';
 
   export let entry: DailyLogEntry | null = null;
   export let visible = false;
@@ -13,7 +15,8 @@
     close: void;
   }>();
 
-  let quantity = 1;
+  let quantityStr = '1';
+  $: quantity = parseFraction(quantityStr) ?? 1;
   let unit = '';
   let meal_id: number | null = null;
   let portions: { description: string; gram_weight: number }[] = [];
@@ -22,7 +25,7 @@
 
   $: if (visible && entry && entry.food_id !== lastFoodId) {
     lastFoodId = entry.food_id;
-    quantity = entry.quantity;
+    quantityStr = String(entry.quantity);
     unit = entry.unit || '';
     meal_id = null;
     calPerGram = 0;
@@ -118,17 +121,10 @@
 
       <!-- Quantity -->
       <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1.5" for="edit-qty">
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">
           Quantity {#if unit === 'grams'}(g){/if}
         </label>
-        <input
-          id="edit-qty"
-          type="number"
-          bind:value={quantity}
-          min="0.01"
-          step="any"
-          class="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-center text-lg font-medium"
-        />
+        <FractionInput bind:value={quantityStr} />
       </div>
 
       {#if estimatedCal != null}
