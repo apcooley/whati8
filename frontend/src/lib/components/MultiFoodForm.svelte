@@ -110,7 +110,10 @@
         },
         body: JSON.stringify({
           entries,
-          logged_at: new Date().toISOString(),
+          logged_at: (() => {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+          })(),
         }),
       });
 
@@ -180,7 +183,7 @@
     <!-- Header -->
     <div class="flex-none bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between rounded-t-lg">
       <h3 id="confirm-foods-title" class="text-lg font-semibold text-gray-900">Confirm Foods</h3>
-      <button
+      <button type="button"
         on:click={handleCancel}
         class="text-gray-400 hover:text-gray-600"
         disabled={isSubmitting}
@@ -233,7 +236,7 @@
 
     <!-- Footer -->
     <div class="flex-none bg-white border-t border-gray-200 px-4 py-3 flex gap-2 rounded-b-lg">
-      <button
+      <button type="button"
         on:click={handleCancel}
         disabled={isSubmitting}
         class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -241,7 +244,7 @@
       >
         ❌ Cancel
       </button>
-      <button
+      <button type="button"
         on:click={handleSubmit}
         disabled={!canSubmit}
         class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"

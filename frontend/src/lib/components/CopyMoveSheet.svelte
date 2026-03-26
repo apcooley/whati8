@@ -1,0 +1,124 @@
+<script lang="ts">
+  import { createEventDispatcher } from 'svelte';
+  import type { DailyLogEntry } from '../types/profile';
+  import { STANDARD_MEALS } from '../types/profile';
+  import { copyLog, moveLog } from '../api/daily';
+  import { toastStore } from '../stores/toast';
+
+  export let mode: 'copy' | 'move' = 'copy';
+  export let entry: DailyLogEntry | null = null;
+  export let currentDate: string = '';
+  export let visible = false;
+
+  const dispatch = createEventDispatcher<{ done: void; close: void }>();
+
+  let targetDate = '';
+  let mealId: number | null = null;
+  let lastOpened = false;
+
+  // Initialize defaults only on open (not on every reactive cycle)
+  $: if (visible && entry && !lastOpened) {
+    lastOpened = true;
+    const today = new Date();
+    targetDate = today.toISOString().split('T')[0];
+    mealId = null;
+  } else if (!visible) {
+    lastOpened = false;
+  }
+
+  async function handleSubmit() {
+    if (!entry || !targetDate) return;
+
+    try {
+      if (mode === 'copy') {
+        await copyLog(entry.id, targetDate, mealId ?? undefined);
+        toastStore.success('Log copied');
+      } else {
+        await moveLog(entry.id, targetDate, mealId ?? undefined);
+        toastStore.success('Log moved');
+      }
+      dispatch('done');
+      close();
+    } catch (err) {
+      toastStore.error(err instanceof Error ? err.message : `Failed to ${mode}`);
+    }
+  }
+
+  function close() {
+    dispatch('close');
+  }
+</script>
+
+{#if visible && entry}
+  <div
+    class="fixed inset-0 bg-black bg-opacity-40 z-40"
+    on:click={close}
+    on:keydown={(e) => e.key === 'Escape' && close()}
+    role="button" tabindex="-1" aria-label="Close"
+  ></div>
+
+  <div class="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl z-50 pb-safe">
+    <div class="flex justify-center pt-3 pb-1">
+      <div class="w-10 h-1 bg-gray-300 rounded-full"></div>
+    </div>
+
+    <div class="px-4 py-3 border-b border-gray-100">
+      <h3 class="font-semibold text-gray-900 text-lg">
+        {mode === 'copy' ? 'Copy' : 'Move'} log to...
+      </h3>
+      <p class="text-sm text-gray-500 mt-0.5">{entry.food_name}</p>
+    </div>
+
+    <div class="px-4 py-4 space-y-4">
+      <!-- Date input -->
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1.5" for="target-date">
+          Date
+        </label>
+        <input
+          id="target-date"
+          type="date"
+          bind:value={targetDate}
+          class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"
+          required
+        />
+      </div>
+
+      <!-- Meal selector -->
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">
+          Meal <span class="text-gray-400 font-normal">(defaults to original)</span>
+        </label>
+        <div class="grid grid-cols-4 gap-2">
+          {#each STANDARD_MEALS as meal}
+            <button type="button"
+              on:click={() => mealId = mealId === meal.id ? null : meal.id}
+              class="py-2 px-1 text-xs rounded-xl border-2 font-medium transition-colors
+                {mealId === meal.id
+                  ? 'border-primary-500 bg-primary-50 text-primary-700'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300'}"
+            >
+              {meal.name}
+            </button>
+          {/each}
+        </div>
+      </div>
+    </div>
+
+    <div class="px-4 pb-6 flex gap-3">
+      <button type="button"
+        on:click={close}
+        class="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+      >
+        Cancel
+      </button>
+      <button type="button"
+        on:click={handleSubmit}
+        disabled={!targetDate}
+        class="flex-1 py-3 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 disabled:opacity-50"
+      >
+        {mode === 'copy' ? 'Copy' : 'Move'}
+      </button>
+    </div>
+  </div>
+{/if}

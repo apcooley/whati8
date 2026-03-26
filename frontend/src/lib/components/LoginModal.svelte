@@ -144,7 +144,7 @@
     </form>
 
     <div class="mt-6 text-center">
-      <button
+      <button type="button"
         on:click={toggleMode}
         disabled={loading}
         class="text-sm text-primary-600 hover:text-primary-700 disabled:opacity-50"

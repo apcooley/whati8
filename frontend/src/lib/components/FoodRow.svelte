@@ -178,6 +178,7 @@
         }}
       />
       <button
+        type="button"
         on:click={handleAddAsIs}
         class="px-3 py-2 text-primary-600 hover:bg-primary-50 rounded-lg font-medium"
         style="min-height: 44px; min-width: 44px;"
@@ -186,6 +187,7 @@
         ➕
       </button>
       <button
+        type="button"
         on:click={handleSearch}
         disabled={isSearching}
         class="px-3 py-2 text-primary-600 hover:bg-primary-50 rounded-lg font-medium disabled:text-gray-400"
@@ -202,6 +204,7 @@
         {/if}
       </button>
       <button
+        type="button"
         on:click={() => { isEditMode = false; editText = item.raw_text; }}
         class="px-3 py-2 text-gray-600 hover:bg-gray-50 border border-gray-300 rounded-lg font-medium"
         style="min-height: 44px;"
@@ -214,6 +217,7 @@
     <!-- Display Mode -->
     <div class="flex items-center gap-2">
       <button
+        type="button"
         on:click={handleFoodClick}
         class="flex-1 text-left px-3 py-2 rounded-lg hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
         class:text-red-600={item.status === 'not_found'}
@@ -275,6 +279,7 @@
       </select>
       
       <button
+        type="button"
         on:click={handleEdit}
         class="px-2 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"
         style="min-height: 44px; min-width: 44px;"
@@ -284,6 +289,7 @@
       </button>
       
       <button
+        type="button"
         on:click={handleDelete}
         class="px-2 py-2 text-red-600 hover:bg-red-50 rounded-lg"
         style="min-height: 44px; min-width: 44px;"

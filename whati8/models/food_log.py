@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from whati8.models.base import Base, TimestampMixin
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from whati8.models.food import Food
     from whati8.models.meal import Meal
     from whati8.models.user import User
+    from whati8.models.user_food import UserFood
 
 
 class FoodLog(Base, TimestampMixin):
@@ -45,14 +46,24 @@ class FoodLog(Base, TimestampMixin):
         nullable=True,
         index=True,
     )
+    user_food_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_foods.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Consumption details
     quantity: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,
     )
+    unit: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        doc="Unit selected by user at log time",
+    )
     logged_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
         index=True,
     )
@@ -62,6 +73,7 @@ class FoodLog(Base, TimestampMixin):
     user: Mapped["User"] = relationship(back_populates="food_logs")
     food: Mapped["Food"] = relationship(back_populates="food_logs")
     meal: Mapped["Meal | None"] = relationship(back_populates="food_logs")
+    user_food: Mapped["UserFood | None"] = relationship()
 
     # Indexes
     __table_args__ = (

@@ -105,6 +105,10 @@ class FoodCreateRequest(BaseModel):
     serving_size: float = Field(..., gt=0, description="Serving size amount")
     unit: str = Field(default="g", max_length=20, description="Serving unit (g, oz, ml, cup, piece, etc.)")
     gram_weight: float | None = Field(None, gt=0, description="Weight in grams per serving (optional, for non-mass units)")
+    serving_description: str | None = Field(None, max_length=200, description="Human-readable serving description")
+    custom_unit: str | None = Field(None, max_length=50, description="Custom serving unit name (e.g. 'bottle', 'bar', 'slice')")
+    volume_ml: float | None = Field(None, gt=0, description="Volume in mL per serving (for density-based conversions)")
+    serving_quantity: float | None = Field(None, gt=0, description="Number of units per serving (e.g. 6 for '6 crackers')")
     notes: str | None = Field(None, max_length=500, description="Additional notes (optional)")
 
     # Core nutrients per serving

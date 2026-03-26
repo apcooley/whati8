@@ -11,7 +11,8 @@ export default defineConfig({
       '/auth': 'http://localhost:9428',
       '/foods': 'http://localhost:9428',
       '/logs': 'http://localhost:9428',
-      '/agent': 'http://localhost:9428'
+      '/agent': 'http://localhost:9428',
+      '/profile': 'http://localhost:9428'
     }
   },
   build: {

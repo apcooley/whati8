@@ -4,9 +4,9 @@ Pydantic schemas for food log endpoints.
 Defines request/response schemas for food logging CRUD operations.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from whati8.constants import FOOD_LOG_NOTES_MAX_LENGTH
 from whati8.schemas.base import BaseORMModel, BaseRequestModel, BaseResponseModel
@@ -48,6 +48,7 @@ class FoodLogUpdate(BaseRequestModel):
 
     food_id: int | None = Field(None, description="ID of the food consumed")
     meal_id: int | None = Field(None, description="ID of the meal category")
+    unit: str | None = Field(None, description="Unit/portion for this log")
     quantity: float | None = Field(
         None, gt=0, description="Quantity consumed (in food's serving units)"
     )
@@ -75,6 +76,7 @@ class FoodLogResponse(BaseORMModel):
     food_id: int
     meal_id: int | None
     quantity: float
+    unit: str | None = None
     logged_at: datetime
     notes: str | None
     created_at: datetime
@@ -92,3 +94,37 @@ class FoodLogListResponse(BaseResponseModel):
     total: int = Field(..., description="Total number of logs matching filters")
     limit: int = Field(..., description="Results per page")
     offset: int = Field(..., description="Result offset for pagination")
+
+
+class CopyLogRequest(BaseRequestModel):
+    """Request schema for copying a food log to a different date."""
+
+    target_date: date = Field(..., description="Date to copy the log to")
+    meal_id: int | None = Field(
+        None, description="Optional meal assignment (defaults to original meal_id)"
+    )
+
+
+class MoveLogRequest(BaseRequestModel):
+    """Request schema for moving a food log to a different date/meal."""
+
+    target_date: date | None = Field(None, description="New date for the log")
+    meal_id: int | None = Field(None, description="New meal assignment")
+
+    @model_validator(mode="after")
+    def at_least_one(self):
+        """Validate that at least one field is provided."""
+        if self.target_date is None and self.meal_id is None:
+            raise ValueError("At least one of target_date or meal_id is required")
+        return self
+
+
+class CopyMealRequest(BaseRequestModel):
+    """Request schema for copying all logs from one meal to another date."""
+
+    source_date: date = Field(..., description="Date to copy logs from")
+    source_meal_id: int = Field(..., description="Meal to copy logs from")
+    target_date: date = Field(..., description="Date to copy logs to")
+    target_meal_id: int | None = Field(
+        None, description="Target meal assignment (defaults to source_meal_id)"
+    )

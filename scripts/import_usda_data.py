@@ -43,8 +43,9 @@ DOWNLOAD_URLS = {
 class USDAImporter:
     """Import USDA Food Data Central bulk data."""
 
-    def __init__(self, limit: int | None = None):
+    def __init__(self, limit: int | None = None, force: bool = False):
         self.limit = limit
+        self.force = force
         self.download_dir = project_root / "data" / "usda"
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.nutrient_id_map: dict[int, int] = {}  # USDA nutrient ID -> our DB nutrient ID
@@ -179,6 +180,26 @@ class USDAImporter:
             if amount is None or usda_nutrient_id is None:
                 continue
 
+            # USDA has two Energy nutrients:
+            # 1008 = Energy (kcal), 1062 = Energy (kJ)
+            # We store everything as kcal (our nutrient "Energy" is in kcal).
+            # Prefer 1008 (kcal). If we see 1062 (kJ), convert to kcal.
+            if usda_nutrient_id == 1062:
+                # Convert kJ to kcal
+                amount = amount / 4.184
+                usda_nutrient_name = "Energy"  # Map to our "Energy" nutrient
+            elif usda_nutrient_id == 1008:
+                # Check if this food also has 1062 (kJ) — if so, skip and use kJ→kcal conversion
+                has_kj = any(
+                    nd.get("nutrient", {}).get("id") == 1062
+                    for nd in nutrients_data
+                )
+                if has_kj:
+                    continue  # Skip kcal, we'll convert from kJ instead
+                else:
+                    # Use kcal as-is
+                    usda_nutrient_name = "Energy"  # Map to our "Energy" nutrient
+
             # Try to find or create nutrient in database
             our_nutrient_id = None
 
@@ -289,8 +310,16 @@ class USDAImporter:
                             select(Food).where(Food.usda_fdc_id == fdc_id)
                         )
                         if existing:
-                            self.stats["foods_skipped"] += 1
-                            continue
+                            if self.force:
+                                # Delete existing food's nutrients and portions, then update
+                                from sqlalchemy import delete
+                                await db.execute(delete(FoodNutrient).where(FoodNutrient.food_id == existing.id))
+                                await db.execute(delete(FoodPortion).where(FoodPortion.food_id == existing.id))
+                                await db.delete(existing)
+                                await db.flush()
+                            else:
+                                self.stats["foods_skipped"] += 1
+                                continue
 
                         # Parse and create food
                         food, food_nutrients, portions = await self.parse_food_item(food_data, db)
@@ -323,6 +352,74 @@ class USDAImporter:
                     f" ✓ ({self.stats['foods_created']} created, {self.stats['foods_skipped']} skipped)"
                 )
 
+    async def dedup_foods(self) -> int:
+        """Remove SR Legacy duplicates where a Foundation food with the same name exists.
+
+        For each duplicate group:
+        - Keep the food with the highest usda_fdc_id (Foundation)
+        - Migrate user_foods, food_logs, recipe_ingredients refs to the keeper
+        - Delete food_nutrients and food_portions for the removed food
+        - Delete the removed food
+
+        Returns count of foods removed.
+        """
+        from collections import defaultdict
+        from sqlalchemy import text
+
+        async with AsyncSessionLocal() as db:
+            # Find all USDA foods grouped by name
+            result = await db.execute(text("""
+                SELECT id, name, usda_fdc_id
+                FROM foods
+                WHERE usda_fdc_id IS NOT NULL AND is_recipe_expired = false
+                ORDER BY name, usda_fdc_id DESC
+            """))
+            rows = result.fetchall()
+
+            by_name = defaultdict(list)
+            for food_id, name, fdc_id in rows:
+                by_name[name].append((food_id, fdc_id))
+
+            duplicates = {n: foods for n, foods in by_name.items() if len(foods) > 1}
+
+            if not duplicates:
+                print("  ✓ No duplicates found")
+                return 0
+
+            removed = 0
+            for name, foods in sorted(duplicates.items()):
+                # foods are already sorted by fdc_id DESC — first is the keeper
+                keep_id, keep_fdc = foods[0]
+
+                for del_id, del_fdc in foods[1:]:
+                    # Migrate references to the keeper
+                    await db.execute(text(
+                        "UPDATE user_foods SET food_id = :to WHERE food_id = :from"
+                    ), {"to": keep_id, "from": del_id})
+                    await db.execute(text(
+                        "UPDATE food_logs SET food_id = :to WHERE food_id = :from"
+                    ), {"to": keep_id, "from": del_id})
+                    await db.execute(text(
+                        "UPDATE recipe_ingredients SET food_id = :to WHERE food_id = :from"
+                    ), {"to": keep_id, "from": del_id})
+
+                    # Delete nutrients, portions, and the food itself
+                    await db.execute(text(
+                        "DELETE FROM food_nutrients WHERE food_id = :id"
+                    ), {"id": del_id})
+                    await db.execute(text(
+                        "DELETE FROM food_portions WHERE food_id = :id"
+                    ), {"id": del_id})
+                    await db.execute(text(
+                        "DELETE FROM foods WHERE id = :id"
+                    ), {"id": del_id})
+
+                    removed += 1
+
+            await db.commit()
+            print(f"  ✓ Removed {removed} SR Legacy duplicates (Foundation preferred)")
+            return removed
+
     async def run(self):
         """Run the full import process."""
         print("=" * 70)
@@ -354,12 +451,19 @@ class USDAImporter:
         except Exception as e:
             print(f"  ✗ Error importing SR Legacy: {e}")
 
+        # Step 3: Deduplicate — Foundation preferred over SR Legacy
+        print("\n" + "=" * 70)
+        print("3. Deduplicating (Foundation preferred over SR Legacy)")
+        print("=" * 70)
+        dedup_count = await self.dedup_foods()
+
         # Print summary
         print("\n" + "=" * 70)
         print("Import Complete!")
         print("=" * 70)
         print(f"  Foods created:     {self.stats['foods_created']:,}")
         print(f"  Foods skipped:     {self.stats['foods_skipped']:,}")
+        print(f"  Foods deduped:     {dedup_count:,}")
         print(f"  Nutrients linked:  {self.stats['nutrients_linked']:,}")
         print(f"  Portions created:  {self.stats['portions_created']:,}")
         print(f"  Nutrients created: {self.stats['nutrients_created']:,}")
@@ -370,12 +474,24 @@ async def main():
     """Main entry point."""
     # Parse command line arguments
     limit = None
-    if len(sys.argv) > 1:
-        if sys.argv[1] in ["--limit", "-l"] and len(sys.argv) > 2:
-            limit = int(sys.argv[2])
-            print(f"Limiting import to {limit} foods per dataset")
+    force = False
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] in ("--limit", "-l") and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        elif args[i] == "--force":
+            force = True
+            i += 1
+        else:
+            i += 1
+    if limit:
+        print(f"Limiting import to {limit} foods per dataset")
+    if force:
+        print("Force mode: re-importing existing foods")
 
-    importer = USDAImporter(limit=limit)
+    importer = USDAImporter(limit=limit, force=force)
     await importer.run()
 
 

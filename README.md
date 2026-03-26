@@ -79,10 +79,34 @@
 4. **Auto-Server-Kill** - Port conflicts resolved automatically with `--kill-existing` (default)
 5. **Bcrypt Fix** - Downgraded to 4.0.1 for passlib compatibility
 
+### Data Quality (Mar 22, 2026)
+- ✅ **Energy stored as kcal:** All nutrients stored in kcal (was kJ), no more conversion math
+- ✅ **Energy coalesce:** `COALESCE(Atwater General, Atwater Specific, Plain Energy)` — Foundation foods use nutrition-label-standard values
+- ✅ **Carb coalesce:** `COALESCE(by summation, MAX(by difference, 0))` — negative carbs clamped, summation preferred
+- ✅ **USDA dedup:** Foundation preferred over SR Legacy; dedup runs automatically during import
+- ✅ **Naive timestamps:** `logged_at` stores wall-clock time (no timezone), not UTC
+- ✅ **Multi-unit servings:** `serving_quantity` correctly splits portion weight (e.g., "4 slices = 56g" → 14g/slice)
+
+### UX Improvements (Mar 24-25, 2026)
+- ✅ **Fraction input** — decimal/fraction toggle on qty fields, two backing strings, auto-converts on switch
+- ✅ **Recipe editing** — full edit mode for recipes (load, modify ingredients, save diffs)
+- ✅ **No pinch zoom** — viewport locked for app-like feel
+- ✅ **Photo upload simplified** — single button (OS handles camera/gallery/file choice)
+- ✅ **Collapsed extra nutrients** — photo results start with additional nutrients hidden
+- ✅ **WW formula fix** — per-entry evaluation then sum (nonlinear formulas like WW points)
+- ✅ **Meal group summaries** — emoji nutrient totals per meal, matching individual entry format
+
+### Copy & Move (Mar 22, 2026)
+- ✅ **Copy log** to any date/meal (`POST /logs/{id}/copy`)
+- ✅ **Move log** to different date/meal (`PATCH /logs/{id}/move`)
+- ✅ **Copy meal** — bulk copy all logs from a meal (`POST /logs/copy-meal`)
+- ✅ **Frontend UI** — context menu on log entries, copy button on meal headers
+- ✅ **Local dates** — frontend uses wall-clock date, not UTC
+
 ### Test Results
-- ✅ 27 food units system tests passing (unit conversions, weight specifications)
-- ✅ 41 comprehensive edge case tests (boundary conditions, user isolation, special characters)
-- ✅ All existing tests still passing (no regressions)
+- ✅ 312+ tests passing across all test suites
+- ✅ Includes kcal migration, nutrient coalesce, naive datetime, serving quantity, copy/move
+- ✅ All tests run against live PostgreSQL database
 
 ---
 

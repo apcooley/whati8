@@ -374,9 +374,15 @@ Extract all food items from the input text."""
         """
         options = []
         for p in portions:
-            # Build display name
+            # Build display name - strip quantity prefix to avoid duplication
+            # e.g., "6 crackers" → "crackers" (the 6 is stored in amount field)
             unit_part = p.modifier if p.modifier else p.unit_name
-            display_name = f"{float(p.amount)} {unit_part} ({float(p.gram_weight)}g)"
+            
+            # Strip leading digits followed by space (e.g., "6 crackers" → "crackers")
+            # But preserve units like "113g" (no space after digits)
+            cleaned_unit = _re.sub(r'^\d+(\.\d+)?\s+', '', unit_part)
+            
+            display_name = f"{cleaned_unit} ({float(p.gram_weight)}g)"
 
             option = PortionOption(
                 portion_id=p.id,
@@ -519,22 +525,23 @@ Extract all food items from the input text."""
             # Format vector for pgvector
             vec_str = "[" + ",".join(f"{v:.8f}" for v in query_vec) + "]"
 
-            # Cosine similarity search: 1 - cosine_distance
-            # pgvector's <=> operator returns cosine distance
-            sem_query = text(
-                f"SELECT id, 1 - ({embedding_col} <=> :vec::vector) AS cosine_sim "
-                f"FROM foods "
-                f"WHERE {embedding_col} IS NOT NULL "
-                f"ORDER BY {embedding_col} <=> :vec::vector "
-                f"LIMIT :lim"
-            )
-            sem_result = await db.execute(
-                sem_query, {"vec": vec_str, "lim": max_results * 3}
-            )
+            # Use a savepoint so SQL errors (e.g., missing column) don't
+            # poison the outer transaction in asyncpg.
+            async with db.begin_nested():
+                sem_query = text(
+                    f"SELECT id, 1 - ({embedding_col} <=> CAST(:vec AS vector)) AS cosine_sim "
+                    f"FROM foods "
+                    f"WHERE {embedding_col} IS NOT NULL "
+                    f"ORDER BY {embedding_col} <=> CAST(:vec AS vector) "
+                    f"LIMIT :lim"
+                )
+                sem_result = await db.execute(
+                    sem_query, {"vec": vec_str, "lim": max_results * 3}
+                )
 
-            for row in sem_result.fetchall():
-                food_id, cosine_sim = row
-                semantic_scores[food_id] = max(float(cosine_sim), 0.0)
+                for row in sem_result.fetchall():
+                    food_id, cosine_sim = row
+                    semantic_scores[food_id] = max(float(cosine_sim), 0.0)
 
             logger.info(
                 f"Semantic search returned {len(semantic_scores)} results via {provider.value}"
@@ -586,7 +593,7 @@ Extract all food items from the input text."""
             if food.portions:
                 final += 0.02
 
-            scored.append((food, final, matched_term))
+            scored.append((food, min(final, 1.0), matched_term))
 
         # Sort by final score descending
         scored.sort(key=lambda x: x[1], reverse=True)

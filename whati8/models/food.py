@@ -5,7 +5,7 @@ Food model for USDA and custom food items.
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from whati8.models.base import Base, TimestampMixin
@@ -63,6 +63,22 @@ class Food(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
+    )
+
+    # Recipe linkage (for materialized recipe foods)
+    recipe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recipes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    recipe_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    is_recipe_expired: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
     )
 
     # Additional details

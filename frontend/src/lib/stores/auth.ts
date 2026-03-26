@@ -23,6 +23,7 @@ function createAuthStore() {
         const user = await apiRegister(username, email, password);
         // After registration, log in automatically
         const response = await apiLogin(username, password);
+        // Update store with token BEFORE calling getMe so apiRequest can read it
         localStorage.setItem('token', response.access_token);
         update(state => ({
           ...state,
@@ -39,7 +40,9 @@ function createAuthStore() {
       update(state => ({ ...state, loading: true }));
       try {
         const response = await apiLogin(username, password);
+        // Update store with token BEFORE calling getMe so apiRequest can read it
         localStorage.setItem('token', response.access_token);
+        update(state => ({ ...state, token: response.access_token }));
         const user = await getMe();
         update(state => ({
           ...state,

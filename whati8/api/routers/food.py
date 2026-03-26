@@ -83,8 +83,10 @@ async def create_food(
     await db.flush()
 
     # Get or create nutrients and add them to the food
+    cal_value = food_data.calories
+
     nutrient_mapping = {
-        "calories": (NUTRIENT_NAMES["calories"], food_data.calories),
+        "calories": (NUTRIENT_NAMES["calories"], cal_value),
         "protein": (NUTRIENT_NAMES["protein"], food_data.protein),
         "carbs": (NUTRIENT_NAMES["carbs"], food_data.carbs),
         "fat": (NUTRIENT_NAMES["fat"], food_data.fat),
@@ -116,21 +118,64 @@ async def create_food(
 
     await db.commit()
     
-    # Create a default portion for custom foods
-    # If gram_weight is provided (for non-mass units), use it
-    # Otherwise, use 100g as normalized base
-    gram_weight_for_portion = food_data.gram_weight if food_data.gram_weight else 100.0
+    # Create portions for custom foods
+    # serving_size is already in grams (canonical base)
+    serving_g = food_data.gram_weight or food_data.serving_size
+    custom_unit = food_data.custom_unit
+    volume_ml = food_data.volume_ml
     
-    default_portion = FoodPortion(
-        food_id=food.id,
-        amount=food_data.serving_size,  # e.g., 1.5 cups
-        unit_name=food_data.unit,
-        unit_abbreviation=food_data.unit,
-        gram_weight=gram_weight_for_portion,  # User-specified or 100g default
-        modifier=None,  # No modifier for custom foods (just use unit name)
-        portion_description=f"1 {food_data.unit}",  # e.g., "1 bar"
-    )
-    db.add(default_portion)
+    seq = 1
+    # 1. Custom unit portion (bottle, bar, slice, etc.)
+    serving_qty = food_data.serving_quantity or 1
+    if custom_unit:
+        weight_per_unit = serving_g / serving_qty
+        # Generate description: unit label with per-unit weight (NO quantity prefix)
+        if food_data.serving_description:
+            import re
+            # Strip any leading quantity prefix (e.g., "4 slices (56g)" → "slices (56g)")
+            desc = re.sub(r'^[\d.]+\s+', '', food_data.serving_description)
+        else:
+            # Description is the UNIT LABEL only, quantity is stored in `amount`
+            desc = f"{custom_unit} ({weight_per_unit:.0f}g)"
+        db.add(FoodPortion(food_id=food.id, amount=serving_qty, unit_name=custom_unit,
+                           gram_weight=weight_per_unit, portion_description=desc, sequence_number=seq))
+        seq += 1
+    
+    # 2. Volume portions (if volume given, compute density)
+    VOLUME_UNITS = {
+        'tsp': 4.929,
+        'tbsp': 14.787,
+        'fl oz': 29.5735,
+        'cup': 236.588,
+        'mL': 1.0,
+    }
+    
+    # Infer volume_ml from unit if it's a known volume unit
+    if not volume_ml and food_data.unit:
+        unit_lower = food_data.unit.lower()
+        for vu_name, vu_ml in VOLUME_UNITS.items():
+            if unit_lower == vu_name.lower():
+                volume_ml = food_data.serving_size * vu_ml
+                break
+    
+    if volume_ml and serving_g:
+        density = serving_g / volume_ml  # g per mL
+        for unit_name, ml_per_unit in VOLUME_UNITS.items():
+            # Skip if this would duplicate the custom_unit
+            if custom_unit and custom_unit.lower() == unit_name.lower():
+                continue
+            gram_weight = density * ml_per_unit
+            db.add(FoodPortion(food_id=food.id, amount=1, unit_name=unit_name,
+                               gram_weight=round(gram_weight, 2), portion_description=unit_name, sequence_number=seq))
+            seq += 1
+    
+    # 3. Weight portions (always)
+    db.add(FoodPortion(food_id=food.id, amount=1, unit_name="g",
+                       gram_weight=1.0, portion_description="grams", sequence_number=seq))
+    seq += 1
+    db.add(FoodPortion(food_id=food.id, amount=1, unit_name="oz",
+                       gram_weight=28.35, portion_description="oz", sequence_number=seq))
+    
     await db.commit()
     
     # Reload the food with relationships eagerly loaded for serialization
@@ -393,8 +438,10 @@ async def update_food(
     await db.flush()
 
     # Add updated nutrients
+    cal_value = food_data.calories
+
     nutrient_mapping = {
-        "calories": (NUTRIENT_NAMES["calories"], food_data.calories),
+        "calories": (NUTRIENT_NAMES["calories"], cal_value),
         "protein": (NUTRIENT_NAMES["protein"], food_data.protein),
         "carbs": (NUTRIENT_NAMES["carbs"], food_data.carbs),
         "fat": (NUTRIENT_NAMES["fat"], food_data.fat),
@@ -528,3 +575,26 @@ async def resolve_foods(
                 status_code=500,
                 detail=f"AI service error: {str(e)}",
             )
+
+
+@router.get("/{food_id}/portions")
+async def get_food_portions(
+    food_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get available portions for a food."""
+    from whati8.models.food_portion import FoodPortion
+    result = await db.execute(
+        select(FoodPortion).where(FoodPortion.food_id == food_id)
+    )
+    portions = result.scalars().all()
+    items = []
+    for p in portions:
+        desc = p.portion_description or p.modifier or p.unit_name or "serving"
+        # Clean up "1.0 undetermined" prefix
+        import re
+        desc = re.sub(r"^[\d.]+ undetermined ", "", desc)
+        if "NLEA" in desc:
+            continue
+        items.append({"description": desc, "gram_weight": float(p.gram_weight)})
+    return items

@@ -5,7 +5,7 @@ Provides endpoints for tracking daily food consumption with full CRUD operations
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -20,13 +20,18 @@ from whati8.constants import (
     FOOD_LOG_MAX_LIMIT,
 )
 from whati8.models import Food, FoodLog, FoodNutrient, Meal, User
+from whati8.schemas.daily_log import DailyLogResponse, QuickLogCreate
 from whati8.schemas.food_log import (
+    CopyLogRequest,
+    CopyMealRequest,
     FoodLogCreate,
     FoodLogListResponse,
     FoodLogResponse,
     FoodLogUpdate,
+    MoveLogRequest,
 )
 from whati8.schemas.multi_food import FoodLogBatchRequest, FoodLogBatchSummaryRequest
+from whati8.services.daily_log_service import DailyLogService
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +238,8 @@ async def get_food_log(
             selectinload(FoodLog.food)
             .selectinload(Food.food_nutrients)
             .selectinload(FoodNutrient.nutrient),
+            selectinload(FoodLog.food)
+            .selectinload(Food.portions),
             selectinload(FoodLog.meal),
         )
         .where(FoodLog.id == log_id)
@@ -292,6 +299,9 @@ async def update_food_log(
         log.meal_id = log_data.meal_id
 
     # Update other fields if provided
+    if log_data.unit is not None:
+        log.unit = log_data.unit
+
     if log_data.quantity is not None:
         log.quantity = log_data.quantity
     if log_data.logged_at is not None:
@@ -309,6 +319,8 @@ async def update_food_log(
             selectinload(FoodLog.food)
             .selectinload(Food.food_nutrients)
             .selectinload(FoodNutrient.nutrient),
+            selectinload(FoodLog.food)
+            .selectinload(Food.portions),
             selectinload(FoodLog.meal),
         )
         .where(FoodLog.id == log_id)
@@ -341,6 +353,267 @@ async def delete_food_log(
     await db.commit()
 
     return None
+
+
+@router.post("/quick", response_model=FoodLogResponse, status_code=status.HTTP_201_CREATED)
+async def quick_log_food(
+    log_data: QuickLogCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Quick log a food from user's profile.
+
+    Uses default quantity, unit, and meal from the user's profile food settings.
+    Falls back to provided values if defaults are not set.
+    Automatically increments use_count and updates last_used_at.
+
+    **Authentication required.**
+
+    Example:
+    ```json
+    {
+        "user_food_id": 42,
+        "quantity": 2.0,
+        "meal_id": 1
+    }
+    ```
+    """
+    try:
+        food_log = await DailyLogService.quick_log_food(db, current_user.id, log_data)
+        return food_log
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/copy-meal", response_model=list[FoodLogResponse], status_code=status.HTTP_201_CREATED)
+async def copy_meal(
+    request: CopyMealRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Copy all logs from a specific meal on a source date to a target date.
+
+    Creates copies of all food logs for a given meal from one date to another.
+    Useful for repeating meals across days.
+
+    **Authentication required.**
+
+    Example:
+    ```json
+    {
+        "source_date": "2026-03-20",
+        "source_meal_id": 2,
+        "target_date": "2026-03-22",
+        "target_meal_id": 3
+    }
+    ```
+    """
+    # Find all logs for the source date and meal
+    query = (
+        select(FoodLog)
+        .where(FoodLog.user_id == current_user.id)
+        .where(func.date(FoodLog.logged_at) == request.source_date)
+        .where(FoodLog.meal_id == request.source_meal_id)
+        .options(
+            selectinload(FoodLog.food)
+            .selectinload(Food.food_nutrients)
+            .selectinload(FoodNutrient.nutrient),
+            selectinload(FoodLog.food).selectinload(Food.portions),
+            selectinload(FoodLog.meal),
+        )
+    )
+    result = await db.execute(query)
+    source_logs = result.scalars().all()
+
+    # If no source logs found, return empty list
+    if not source_logs:
+        return []
+
+    # Create copies
+    new_logs = []
+    target_meal_id = request.target_meal_id or request.source_meal_id
+    logged_at = datetime.combine(request.target_date, time(12, 0))
+
+    for source_log in source_logs:
+        new_log = FoodLog(
+            user_id=current_user.id,
+            food_id=source_log.food_id,
+            meal_id=target_meal_id,
+            quantity=source_log.quantity,
+            unit=source_log.unit,
+            user_food_id=source_log.user_food_id,
+            notes=source_log.notes,
+            logged_at=logged_at,
+        )
+        db.add(new_log)
+        new_logs.append(new_log)
+
+    await db.commit()
+
+    # Reload with relationships
+    new_log_ids = [log.id for log in new_logs]
+    query = (
+        select(FoodLog)
+        .where(FoodLog.id.in_(new_log_ids))
+        .options(
+            selectinload(FoodLog.food)
+            .selectinload(Food.food_nutrients)
+            .selectinload(FoodNutrient.nutrient),
+            selectinload(FoodLog.food).selectinload(Food.portions),
+            selectinload(FoodLog.meal),
+        )
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("/{log_id}/copy", response_model=FoodLogResponse, status_code=status.HTTP_201_CREATED)
+async def copy_log(
+    log_id: int,
+    request: CopyLogRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Copy a food log to a different date.
+
+    Creates a duplicate of an existing food log on the target date.
+    Preserves all attributes except the date (and optionally meal).
+
+    **Authentication required.** Only allows copying logs owned by current user.
+
+    Example:
+    ```json
+    {
+        "target_date": "2026-03-22",
+        "meal_id": 3
+    }
+    ```
+    """
+    # Fetch and verify ownership
+    original_log = await get_user_resource_or_404(
+        db, FoodLog, log_id, current_user, "food log"
+    )
+
+    # Create new log with target date at noon
+    logged_at = datetime.combine(request.target_date, time(12, 0))
+    meal_id = request.meal_id if request.meal_id is not None else original_log.meal_id
+
+    new_log = FoodLog(
+        user_id=current_user.id,
+        food_id=original_log.food_id,
+        meal_id=meal_id,
+        quantity=original_log.quantity,
+        unit=original_log.unit,
+        user_food_id=original_log.user_food_id,
+        notes=original_log.notes,
+        logged_at=logged_at,
+    )
+
+    db.add(new_log)
+    await db.commit()
+    await db.refresh(new_log)
+
+    # Reload with eager loading for full details
+    query = (
+        select(FoodLog)
+        .where(FoodLog.id == new_log.id)
+        .options(
+            selectinload(FoodLog.food)
+            .selectinload(Food.food_nutrients)
+            .selectinload(FoodNutrient.nutrient),
+            selectinload(FoodLog.food).selectinload(Food.portions),
+            selectinload(FoodLog.meal),
+        )
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@router.patch("/{log_id}/move", response_model=FoodLogResponse)
+async def move_log(
+    log_id: int,
+    request: MoveLogRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Move a food log to a different date and/or meal.
+
+    Updates an existing food log's date and/or meal assignment.
+    When changing date, preserves the original time-of-day.
+
+    **Authentication required.** Only allows moving logs owned by current user.
+
+    Example:
+    ```json
+    {
+        "target_date": "2026-03-22",
+        "meal_id": 3
+    }
+    ```
+    """
+    # Fetch and verify ownership
+    log = await get_user_resource_or_404(
+        db, FoodLog, log_id, current_user, "food log"
+    )
+
+    # Update date if provided (preserve time-of-day)
+    if request.target_date is not None:
+        original_time = log.logged_at.time()
+        log.logged_at = datetime.combine(request.target_date, original_time)
+
+    # Update meal if provided
+    if request.meal_id is not None:
+        log.meal_id = request.meal_id
+
+    await db.commit()
+    await db.refresh(log)
+
+    # Reload with eager loading for full details
+    query = (
+        select(FoodLog)
+        .where(FoodLog.id == log_id)
+        .options(
+            selectinload(FoodLog.food)
+            .selectinload(Food.food_nutrients)
+            .selectinload(FoodNutrient.nutrient),
+            selectinload(FoodLog.food).selectinload(Food.portions),
+            selectinload(FoodLog.meal),
+        )
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@router.get("/daily/{target_date}", response_model=DailyLogResponse)
+async def get_daily_logs(
+    target_date: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get all logs for a specific date, grouped by meal with nutrient summary.
+
+    Returns logs organized by meal category with computed nutrient totals
+    for the day. Includes user goals as targets in the summary.
+
+    **Authentication required.**
+
+    Example: `/logs/daily/2026-03-02`
+    """
+    try:
+        parsed_date = date.fromisoformat(target_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format: {target_date}. Use YYYY-MM-DD.",
+        )
+
+    result = await DailyLogService.get_daily_logs(db, current_user.id, parsed_date)
+    return result
 
 
 @router.post("/batch", response_model=dict)
@@ -379,7 +652,7 @@ async def create_logs_batch(
             if logged_at.tzinfo is not None:
                 logged_at = logged_at.replace(tzinfo=None)
         else:
-            logged_at = datetime.utcnow()
+            logged_at = datetime.now()
 
         # Validate all food_ids exist
         food_ids = [entry.food_id for entry in request.entries]
@@ -457,7 +730,7 @@ async def create_logs_batch_with_summary(
             if logged_at.tzinfo is not None:
                 logged_at = logged_at.replace(tzinfo=None)
         else:
-            logged_at = datetime.utcnow()
+            logged_at = datetime.now()
 
         # Validate all food_ids exist
         food_ids = [entry.food_id for entry in request.entries]
