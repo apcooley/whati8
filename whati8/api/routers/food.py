@@ -577,6 +577,35 @@ async def resolve_foods(
             )
 
 
+@router.get("/{food_id}/summary")
+async def get_food_summary(
+    food_id: int,
+    quantity: float = 100.0,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get summary nutrients for a food at a given gram quantity.
+    
+    Uses the user's configured summary metrics (including formulas like WW points).
+    Returns the same format as per-log summary_nutrients in daily view.
+    """
+    from whati8.services.daily_log_service import compute_food_summary
+
+    # Load food with nutrients
+    result = await db.execute(
+        select(Food)
+        .where(Food.id == food_id)
+        .options(
+            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+        )
+    )
+    food = result.scalar_one_or_none()
+    if not food:
+        raise HTTPException(status_code=404, detail="Food not found")
+
+    return await compute_food_summary(db, current_user.id, food, quantity)
+
+
 @router.get("/{food_id}/portions")
 async def get_food_portions(
     food_id: int,

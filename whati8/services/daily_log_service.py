@@ -130,6 +130,81 @@ def _coalesce_carbs(food_nutrients, portion_scale_factor) -> float | None:
     return None
 
 
+async def compute_food_summary(
+    db: AsyncSession, user_id: int, food: Food, quantity_grams: float
+) -> list[dict]:
+    """Compute summary nutrients for a food at a given gram quantity.
+
+    Uses the same user config, coalesce strategies, and formula engine
+    as the daily log view. Returns the same format as per-log summary_nutrients.
+
+    This is the single source of truth for nutrient display anywhere in the app.
+    """
+    from whati8.models.user_summary_nutrient import UserSummaryNutrient as USN
+    from whati8.api.routers.summary_config import _ensure_defaults
+    from whati8.services.formula_engine import evaluate_formula
+
+    config_items = await _ensure_defaults(db, user_id)
+    if not config_items:
+        return []
+
+    # Scale factor: quantity_grams / base
+    from decimal import Decimal
+    is_custom = bool(getattr(food, 'created_by_user_id', None))
+    base = float(food.serving_size) if is_custom and food.serving_size else 100.0
+    scale = quantity_grams / base if base > 0 else 0
+
+    # Extract core nutrients using coalesce strategies
+    calories = _coalesce_energy(food.food_nutrients, Decimal(str(scale)))
+    carbs = _coalesce_carbs(food.food_nutrients, Decimal(str(scale)))
+
+    protein = None
+    fat = None
+    fiber = None
+    for fn in food.food_nutrients:
+        scaled = float(fn.amount_per_serving * Decimal(str(scale)))
+        name_lower = fn.nutrient.name.lower()
+        if name_lower == "protein":
+            protein = scaled
+        elif name_lower in ["total lipid (fat)", "fat"]:
+            fat = scaled
+        elif name_lower in ["fiber, total dietary", "fiber"]:
+            fiber = scaled
+
+    friendly = {
+        "calories": calories or 0,
+        "protein": protein or 0,
+        "carbs": carbs or 0,
+        "fat": fat or 0,
+        "fiber": fiber or 0,
+    }
+
+    summary = []
+    for cfg in config_items:
+        if cfg.formula:
+            val = evaluate_formula(cfg.formula, friendly) or 0
+        elif cfg.nutrient_id:
+            if cfg.nutrient_id in ENERGY_NUTRIENT_IDS:
+                val = _coalesce_energy(food.food_nutrients, Decimal(str(scale))) or 0
+            elif cfg.nutrient_id in CARB_NUTRIENT_IDS:
+                val = _coalesce_carbs(food.food_nutrients, Decimal(str(scale))) or 0
+            else:
+                val = 0
+                for fn in food.food_nutrients:
+                    if fn.nutrient_id == cfg.nutrient_id:
+                        val = float(fn.amount_per_serving * Decimal(str(scale)))
+                        break
+        else:
+            val = 0
+        summary.append({
+            "name": cfg.display_name,
+            "value": round(val, 1),
+            "unit": cfg.display_unit,
+        })
+
+    return summary
+
+
 class DailyLogService:
     """Service for daily log views and quick logging from profile."""
 

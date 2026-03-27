@@ -18,6 +18,7 @@ export interface FoodDetail {
   brand: string | null;
   serving_size: number;
   unit: string;
+  created_by_user_id: number | null;
   food_nutrients: FoodNutrient[];
   portions: Portion[];
   calories?: number | null;
@@ -131,7 +132,7 @@ export function getFoodCalPerGram(food: FoodDetail): number | null {
   );
   if (!n) return null;
   let kcal = n.amount_per_serving;
-  const base = (food as any).created_by_user_id ? (food.serving_size || 100) : 100;
+  const base = food.created_by_user_id ? (food.serving_size || 100) : 100;
   return kcal / base;
 }
 

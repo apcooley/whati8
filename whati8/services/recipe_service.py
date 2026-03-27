@@ -309,18 +309,46 @@ class RecipeService:
             total_weight += quantity_in_grams
 
             # Calculate nutrients
+            # For energy: use coalesced value (Atwater General > Specific > Plain)
+            # and store under plain Energy (39) only. Skip Atwater variants to avoid
+            # incomplete sums when mixing USDA (has Atwater) and custom (no Atwater) foods.
+            from whati8.services.daily_log_service import (
+                _coalesce_energy, _coalesce_carbs,
+                ENERGY_NUTRIENT_IDS, CARB_NUTRIENT_IDS,
+            )
+
+            base = food.serving_size if food.created_by_user_id else Decimal("100")
+            per_gram_scale = Decimal("1") / base if base else Decimal("0")
+
+            # Coalesced energy: store under plain Energy (39) only
+            coalesced_energy = _coalesce_energy(food.food_nutrients, per_gram_scale)
+            if coalesced_energy:
+                energy_for_ingredient = Decimal(str(coalesced_energy)) * quantity_in_grams
+                if 39 not in nutrient_totals:
+                    nutrient_totals[39] = Decimal("0")
+                nutrient_totals[39] += energy_for_ingredient
+
+            # Coalesced carbs: store under by-difference (81) only
+            coalesced_carbs = _coalesce_carbs(food.food_nutrients, per_gram_scale)
+            if coalesced_carbs:
+                carbs_for_ingredient = Decimal(str(coalesced_carbs)) * quantity_in_grams
+                if 81 not in nutrient_totals:
+                    nutrient_totals[81] = Decimal("0")
+                nutrient_totals[81] += carbs_for_ingredient
+
             for food_nutrient in food.food_nutrients:
                 nutrient_id = food_nutrient.nutrient_id
 
+                # Skip energy and carb nutrients — handled via coalesce above
+                if nutrient_id in ENERGY_NUTRIENT_IDS or nutrient_id in CARB_NUTRIENT_IDS:
+                    continue
+
                 # Get nutrient per gram
                 if food.created_by_user_id:
-                    # Custom food: amount_per_serving is per serving_size
                     nutrient_per_gram = food_nutrient.amount_per_serving / food.serving_size
                 else:
-                    # USDA food: amount_per_serving is per 100g
                     nutrient_per_gram = food_nutrient.amount_per_serving / Decimal("100")
 
-                # Total nutrient from this ingredient
                 nutrient_amount = nutrient_per_gram * quantity_in_grams
 
                 if nutrient_id not in nutrient_totals:

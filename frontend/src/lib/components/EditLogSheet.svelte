@@ -5,6 +5,8 @@
   import { apiRequest } from '../api/client';
   import { parseFraction } from '../utils/parseFraction';
   import FractionInput from './FractionInput.svelte';
+  import NutrientBadges from './NutrientBadges.svelte';
+  import { getFoodSummary, type SummaryNutrient } from '../api/foods';
 
   export let entry: DailyLogEntry | null = null;
   export let visible = false;
@@ -33,13 +35,22 @@
   }
 
   $: selectedPortion = portions.find(p => p.description === unit);
-  $: estimatedCal = calPerGram > 0 && selectedPortion
-    ? Math.round(calPerGram * selectedPortion.gram_weight * quantity)
-    : calPerGram > 0 && unit === 'grams'
-      ? Math.round(calPerGram * quantity)
-      : entry && entry.calories != null
-        ? Math.round((entry.calories / entry.quantity) * quantity)
-        : null;
+  $: estGrams = selectedPortion
+    ? selectedPortion.gram_weight * quantity
+    : unit === 'grams' ? quantity : (entry ? entry.quantity : 0);
+
+  let editSummary: SummaryNutrient[] | null = null;
+  let editSummaryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $: if (entry && estGrams > 0) {
+    if (editSummaryTimer) clearTimeout(editSummaryTimer);
+    editSummaryTimer = setTimeout(() => {
+      if (!entry) return;
+      getFoodSummary(entry.food_id, estGrams)
+        .then(sn => { editSummary = sn; })
+        .catch(() => { editSummary = null; });
+    }, 200);
+  }
 
   async function loadPortions(foodId: number) {
     try {
@@ -127,10 +138,10 @@
         <FractionInput bind:value={quantityStr} />
       </div>
 
-      {#if estimatedCal != null}
-        <p class="text-center text-sm text-gray-500">
-          ≈ <span class="font-semibold text-orange-600">{estimatedCal} kcal</span>
-        </p>
+      {#if editSummary && editSummary.length > 0}
+        <div class="text-center text-sm text-gray-500">
+          ≈ <NutrientBadges summaryNutrients={editSummary} size="sm" />
+        </div>
       {/if}
 
       <!-- Meal -->

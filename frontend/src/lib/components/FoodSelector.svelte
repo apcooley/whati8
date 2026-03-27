@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import type { FoodPortion } from '../stores/multiFoodForm';
+  import NutrientBadges from './NutrientBadges.svelte';
 
   export let alternatives: Array<{
     food_id: number;
@@ -52,8 +53,10 @@
       style="min-height: 44px;"
     >
       <div class="font-medium text-gray-900">{food.name}</div>
-      <div class="text-sm text-gray-600 mt-1">
-        {food.serving_size || 100} {food.serving_unit === 'undetermined' || !food.serving_unit ? 'g' : food.serving_unit} • {food.calories ?? '?'} cal • {food.protein ?? '?'}g protein
+      <div class="text-sm text-gray-600 mt-1 flex flex-wrap items-center gap-x-1">
+        <span>{food.serving_size || 100} {food.serving_unit === 'undetermined' || !food.serving_unit ? 'g' : food.serving_unit}</span>
+        <span>·</span>
+        <NutrientBadges calories={food.calories} protein={food.protein} carbs={food.carbs} fat={food.fat} />
       </div>
     </button>
   {/each}

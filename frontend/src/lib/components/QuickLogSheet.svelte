@@ -4,6 +4,8 @@
   import { getDisplayName, getFoodCalPerGram, STANDARD_MEALS } from '../types/profile';
   import { parseFraction } from '../utils/parseFraction';
   import FractionInput from './FractionInput.svelte';
+  import NutrientBadges from './NutrientBadges.svelte';
+  import { getFoodSummary, type SummaryNutrient } from '../api/foods';
 
   export let userFood: UserFood | null = null;
   export let visible = false;
@@ -96,13 +98,24 @@
   $: displayName = userFood ? getDisplayName(userFood) : '';
   $: calPerGram = userFood ? getFoodCalPerGram(userFood.food) : null;
 
-  // Estimate calories for current quantity
-  $: estCalories = (() => {
-    if (!calPerGram || !userFood || !portionOptions[selectedPortionIndex]) return null;
-    const portionGrams = portionOptions[selectedPortionIndex].gram_weight;
-    
-    return Math.round(calPerGram * quantity * portionGrams);
+  // Compute summary nutrients server-side (same logic as daily log view)
+  $: estGrams = (() => {
+    if (!userFood || !portionOptions[selectedPortionIndex]) return 0;
+    return quantity * portionOptions[selectedPortionIndex].gram_weight;
   })();
+
+  let summaryNutrients: SummaryNutrient[] | null = null;
+  let summaryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $: if (userFood && estGrams > 0) {
+    // Debounce the API call while user adjusts quantity
+    if (summaryTimer) clearTimeout(summaryTimer);
+    summaryTimer = setTimeout(() => {
+      getFoodSummary(userFood!.food.id, estGrams)
+        .then(sn => { summaryNutrients = sn; })
+        .catch(() => { summaryNutrients = null; });
+    }, 200);
+  }
 
   function onPortionChange() {
     const opt = portionOptions[selectedPortionIndex];
@@ -172,11 +185,11 @@
         </div>
       </div>
 
-      <!-- Estimated calories -->
-      {#if estCalories != null}
-        <p class="text-center text-sm text-gray-500">
-          ≈ <span class="font-semibold text-orange-600">{estCalories} kcal</span>
-        </p>
+      <!-- Estimated nutrients (server-computed, same as daily view) -->
+      {#if summaryNutrients && summaryNutrients.length > 0}
+        <div class="text-center text-sm text-gray-500">
+          ≈ <NutrientBadges summaryNutrients={summaryNutrients} size="sm" />
+        </div>
       {/if}
 
       <!-- Meal -->

@@ -11,8 +11,11 @@
   import ProfileFoodSearch from './ProfileFoodSearch.svelte';
   import ProfileFoodItem from './ProfileFoodItem.svelte';
   import QuickLogSheet from './QuickLogSheet.svelte';
+  import EditFoodSheet from './EditFoodSheet.svelte';
 
   let sheetFood: UserFood | null = null;
+  let editFood: UserFood | null = null;
+  let editVisible = false;
   let searchRef: ProfileFoodSearch;
   let sheetVisible = false;
   let loggingId: number | null = null;
@@ -96,6 +99,7 @@
               <ProfileFoodItem
                 userFood={uf}
                 on:openSheet={(e) => openSheet(e.detail)}
+                on:edit={(e) => { editFood = e.detail; editVisible = true; }}
                 on:delete={handleDelete}
               />
             {/each}
@@ -115,6 +119,7 @@
                 userFood={uf}
                 on:openSheet={(e) => openSheet(e.detail)}
                 on:delete={handleDelete}
+                on:edit={(e) => { editFood = e.detail; editVisible = true; }}
               />
             {/each}
           </div>
@@ -158,4 +163,11 @@
   visible={sheetVisible}
   on:log={handleLog}
   on:close={closeSheet}
+/>
+
+<EditFoodSheet
+  userFood={editFood}
+  visible={editVisible}
+  on:saved={() => { editVisible = false; editFood = null; profileFoodsStore.refresh(); }}
+  on:close={() => { editVisible = false; editFood = null; }}
 />
