@@ -14,7 +14,7 @@ Changes required:
 
 import pytest
 import psycopg2
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timezone
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 

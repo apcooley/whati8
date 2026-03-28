@@ -140,7 +140,6 @@ async def compute_food_summary(
 
     This is the single source of truth for nutrient display anywhere in the app.
     """
-    from whati8.models.user_summary_nutrient import UserSummaryNutrient as USN
     from whati8.api.routers.summary_config import _ensure_defaults
     from whati8.services.formula_engine import evaluate_formula
 
@@ -340,7 +339,6 @@ class DailyLogService:
 
         # Group logs by meal
         # Load user summary config early (needed for per-log summary)
-        from whati8.models.user_summary_nutrient import UserSummaryNutrient as USN
         from whati8.api.routers.summary_config import _ensure_defaults
         from whati8.services.formula_engine import evaluate_formula
         config_items = await _ensure_defaults(db, user_id)
@@ -375,7 +373,6 @@ class DailyLogService:
                         fiber = scaled_value
 
                 # Build friendly values for formula evaluation
-                from whati8.services.formula_engine import evaluate_formula
                 friendly = {
                     "calories": calories or 0,
                     "protein": protein or 0,
@@ -506,7 +503,6 @@ class DailyLogService:
         from whati8.services.formula_engine import get_friendly_name, FRIENDLY_TO_USDA
         # Build set of nutrient IDs we care about from user's summary config
         # Get user's summary config (auto-create defaults if empty)
-        from whati8.models.user_summary_nutrient import UserSummaryNutrient as USN
         from whati8.api.routers.summary_config import _ensure_defaults
         config_items = await _ensure_defaults(db, user_id)
         # Nutrient IDs from user config (for standard nutrients)
@@ -540,7 +536,7 @@ class DailyLogService:
                 nutrient_totals[nutrient_id]["value"] += scaled_value
 
         # Build summary using user's configured metrics
-        from whati8.services.formula_engine import evaluate_formula, FRIENDLY_TO_USDA
+        from whati8.services.formula_engine import evaluate_formula
         # config_items already loaded above for nutrient ID filtering
 
         # If no config, use all computed nutrient_totals as fallback

@@ -8,18 +8,15 @@ Features:
 """
 
 import pytest
-from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from whati8.models import Food, FoodPortion, User
 from whati8.services.food_units import FoodUnitsService
 from whati8.schemas.food_units import (
-    StandardUnit,
     UnitType,
     CreateFoodWithUnitsRequest,
     FoodUnitOption,
-    FoodWithUnitsResponse,
 )
 
 

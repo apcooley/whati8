@@ -241,7 +241,6 @@ class TestFrontendContract:
 
     def test_serving_label_separates_qty_from_unit(self):
         """getServingLabel should compose qty + unit, not return a compound string."""
-        from whati8.config import settings  # just to verify we can import
         with open("frontend/src/lib/types/profile.ts") as f:
             source = f.read()
         # The function should NOT have special handling for units starting with digits

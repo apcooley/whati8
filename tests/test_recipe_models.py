@@ -6,7 +6,7 @@ Tests model creation, relationships, constraints, and new columns.
 
 import pytest
 from decimal import Decimal
-from sqlalchemy import select, inspect
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 

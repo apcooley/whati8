@@ -2,11 +2,11 @@
 
 import re
 from difflib import SequenceMatcher
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from whati8.models import Food, FoodPortion, FoodNutrient
+from whati8.models import Food, FoodPortion
 from whati8.logging_config import get_logger
 from whati8.schemas.food_units import (
     UnitType,

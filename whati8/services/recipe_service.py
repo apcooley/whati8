@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from whati8.logging_config import get_logger
-from whati8.models import Food, FoodNutrient, FoodPortion, Nutrient
+from whati8.models import Food, FoodNutrient, FoodPortion
 from whati8.models.recipe import Recipe, RecipeIngredient, RecipeVersion
 from whati8.models.user_food import UserFood
 
@@ -295,12 +295,29 @@ class RecipeService:
         )
         ingredients = list(result.scalars().all())
 
+        # Re-query each ingredient food's nutrients directly from DB
+        # to avoid stale session cache (expire_on_commit=False can cause
+        # food_nutrients to accumulate stale entries across recipe operations)
+        _fresh_nutrients: dict[int, list] = {}
+        for ingredient in ingredients:
+            fid = ingredient.food_id
+            if fid not in _fresh_nutrients:
+                _fn_result = await db.execute(
+                    select(FoodNutrient)
+                    .where(FoodNutrient.food_id == fid)
+                    .options(selectinload(FoodNutrient.nutrient))
+                    .execution_options(populate_existing=True)
+                )
+                _fresh_nutrients[fid] = list(_fn_result.unique().scalars().all())
+
         # Calculate total weight and nutrients
         total_weight = Decimal("0")
         nutrient_totals: dict[int, Decimal] = {}
 
         for ingredient in ingredients:
             food = ingredient.food
+            # Use fresh nutrients from DB, not potentially stale session cache
+            food_nutrients_fresh = _fresh_nutrients.get(food.id, food.food_nutrients)
 
             # Calculate weight in grams
             quantity_in_grams = await RecipeService._get_quantity_in_grams(
@@ -309,38 +326,63 @@ class RecipeService:
             total_weight += quantity_in_grams
 
             # Calculate nutrients
-            # For energy: use coalesced value (Atwater General > Specific > Plain)
-            # and store under plain Energy (39) only. Skip Atwater variants to avoid
-            # incomplete sums when mixing USDA (has Atwater) and custom (no Atwater) foods.
+            # For energy/carbs: use coalesced values and classify by nutrient name.
+            # This avoids incomplete sums when mixing USDA (has Atwater energy variants)
+            # and custom foods (plain Energy only).
             from whati8.services.daily_log_service import (
                 _coalesce_energy, _coalesce_carbs,
-                ENERGY_NUTRIENT_IDS, CARB_NUTRIENT_IDS,
             )
 
             base = food.serving_size if food.created_by_user_id else Decimal("100")
             per_gram_scale = Decimal("1") / base if base else Decimal("0")
 
-            # Coalesced energy: store under plain Energy (39) only
-            coalesced_energy = _coalesce_energy(food.food_nutrients, per_gram_scale)
-            if coalesced_energy:
+            # Classify nutrients by name into energy/carb sets for this ingredient
+            _energy_ids: set[int] = set()
+            _carb_ids: set[int] = set()
+            _energy_canonical_id: int | None = None
+            _carb_canonical_id: int | None = None
+
+            for fn in food_nutrients_fresh:
+                name_lower = fn.nutrient.name.lower()
+                if name_lower.startswith("energy") or "atwater" in name_lower:
+                    _energy_ids.add(fn.nutrient_id)
+                    if fn.nutrient.name == "Energy":
+                        _energy_canonical_id = fn.nutrient_id
+                elif "carbohydrate" in name_lower:
+                    _carb_ids.add(fn.nutrient_id)
+                    if fn.nutrient.name == "Carbohydrate, by difference":
+                        _carb_canonical_id = fn.nutrient_id
+
+            # Fallback canonical IDs
+            if _energy_canonical_id is None and _energy_ids:
+                _energy_canonical_id = min(_energy_ids)
+            if _carb_canonical_id is None and _carb_ids:
+                _carb_canonical_id = min(_carb_ids)
+
+            # Coalesced energy
+            coalesced_energy = _coalesce_energy(food_nutrients_fresh, per_gram_scale)
+            if coalesced_energy and _energy_canonical_id is not None:
                 energy_for_ingredient = Decimal(str(coalesced_energy)) * quantity_in_grams
-                if 39 not in nutrient_totals:
-                    nutrient_totals[39] = Decimal("0")
-                nutrient_totals[39] += energy_for_ingredient
+                if _energy_canonical_id not in nutrient_totals:
+                    nutrient_totals[_energy_canonical_id] = Decimal("0")
+                nutrient_totals[_energy_canonical_id] += energy_for_ingredient
 
-            # Coalesced carbs: store under by-difference (81) only
-            coalesced_carbs = _coalesce_carbs(food.food_nutrients, per_gram_scale)
-            if coalesced_carbs:
+            # Coalesced carbs
+            coalesced_carbs = _coalesce_carbs(food_nutrients_fresh, per_gram_scale)
+            if coalesced_carbs and _carb_canonical_id is not None:
                 carbs_for_ingredient = Decimal(str(coalesced_carbs)) * quantity_in_grams
-                if 81 not in nutrient_totals:
-                    nutrient_totals[81] = Decimal("0")
-                nutrient_totals[81] += carbs_for_ingredient
+                if _carb_canonical_id not in nutrient_totals:
+                    nutrient_totals[_carb_canonical_id] = Decimal("0")
+                nutrient_totals[_carb_canonical_id] += carbs_for_ingredient
 
-            for food_nutrient in food.food_nutrients:
+            # Skip set: all energy + carb IDs (by name classification, not hardcoded)
+            skip_ids = _energy_ids | _carb_ids
+
+            for food_nutrient in food_nutrients_fresh:
                 nutrient_id = food_nutrient.nutrient_id
 
                 # Skip energy and carb nutrients — handled via coalesce above
-                if nutrient_id in ENERGY_NUTRIENT_IDS or nutrient_id in CARB_NUTRIENT_IDS:
+                if nutrient_id in skip_ids:
                     continue
 
                 # Get nutrient per gram

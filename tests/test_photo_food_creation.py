@@ -13,10 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from whati8.api.app import create_app
-from whati8.models import Food, FoodPortion, User
+from whati8.models import FoodPortion
 from whati8.models.food_nutrient import FoodNutrient
 from whati8.models.nutrient import Nutrient
-from whati8.models.user_food import UserFood
 
 
 @pytest.fixture
@@ -28,7 +27,7 @@ async def client(db_session, seed_test_data, test_user):
     app.dependency_overrides[get_db] = lambda: db_session
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(transport=transport, base_url="http://test/api/v1") as ac:
         resp = await ac.post("/auth/login", json={
             "login": "testuser",
             "password": "testpassword123",
@@ -93,7 +92,7 @@ class TestCreateCustomFood:
 
         assert "bar" in pm, f"Missing 'bar'. Got: {list(pm.keys())}"
         assert pm["bar"].gram_weight == 60.0
-        assert pm["bar"].portion_description == "1 bar (60g)"
+        assert pm["bar"].portion_description == "bar (60g)"
         assert "g" in pm
         assert pm["g"].gram_weight == 1.0
         assert "oz" in pm

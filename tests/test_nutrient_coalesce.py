@@ -13,7 +13,6 @@ import psycopg2
 from datetime import date, datetime, timezone
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import text
 
 from whati8.config import settings
 from whati8.services.daily_log_service import DailyLogService

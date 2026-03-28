@@ -7,7 +7,7 @@ including ordering, custom names, and formula-based custom metrics.
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,7 +15,7 @@ from whati8.api.deps import get_current_user, get_db
 from whati8.models import User
 from whati8.models.user_summary_nutrient import UserSummaryNutrient
 from whati8.models.nutrient import Nutrient
-from whati8.services.formula_engine import FRIENDLY_TO_USDA, USDA_TO_FRIENDLY, evaluate_formula
+from whati8.services.formula_engine import FRIENDLY_TO_USDA, evaluate_formula
 
 router = APIRouter(prefix="/summary-config", tags=["Summary Config"])
 

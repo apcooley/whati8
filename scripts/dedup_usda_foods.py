@@ -16,13 +16,12 @@ import asyncio
 import sys
 from collections import defaultdict
 
-from sqlalchemy import select, text, update, delete
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, "/home/aaron/source/whati8")
 
 from whati8.database import AsyncSessionLocal
-from whati8.models import Food
 
 
 async def find_duplicates(db: AsyncSession) -> dict[str, list[tuple[int, int]]]:
