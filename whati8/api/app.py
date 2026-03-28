@@ -134,13 +134,16 @@ def create_app() -> FastAPI:
         Configured FastAPI application instance
     """
     # 1. Initialize app with metadata and lifespan
+    docs_url = "/api/v1/docs" if settings.docs_enabled else None
+    redoc_url = "/api/v1/redoc" if settings.docs_enabled else None
+    openapi_url = "/api/v1/openapi.json" if settings.docs_enabled else None
     app = FastAPI(
         title="whati8 API",
         description="AI-powered food and nutrition tracker",
         version="0.1.0",
-        docs_url="/api/v1/docs",  # Swagger UI
-        redoc_url="/api/v1/redoc",  # ReDoc
-        openapi_url="/api/v1/openapi.json",
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
         lifespan=lifespan,
     )
 
@@ -150,7 +153,7 @@ def create_app() -> FastAPI:
     # 3. Add CORS middleware (for frontend access)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.allowed_origins,  # Configurable via ALLOWED_ORIGINS env var
+        allow_origins=settings.get_cors_origins(),  # Configurable via ALLOWED_ORIGINS env var
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
