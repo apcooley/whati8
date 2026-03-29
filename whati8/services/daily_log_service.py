@@ -221,11 +221,11 @@ class DailyLogService:
                 "quantity": float(log.quantity),
                 "unit": log.unit or log.food.unit,
                 "logged_at": log.logged_at,
-                "calories": friendly.get("calories"),
-                "protein": friendly.get("protein"),
-                "carbs": friendly.get("carbs"),
-                "fat": friendly.get("fat"),
-                "fiber": friendly.get("fiber"),
+                "calories": round(friendly.get("calories", 0), 1),
+                "protein": round(friendly.get("protein", 0), 1),
+                "carbs": round(friendly.get("carbs", 0), 1),
+                "fat": round(friendly.get("fat", 0), 1),
+                "fiber": round(friendly.get("fiber", 0), 1),
                 "summary_nutrients": log_summary,
             }
 

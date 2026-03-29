@@ -27,6 +27,8 @@ def _is_carb(name: str) -> bool:
     return "carbohydrate" in name.lower()
 
 
+import math
+
 # Maps friendly keys to name-matching functions.
 # "calories" and "carbs" are listed here for completeness but are handled
 # separately via coalescing logic in compute_item_nutrients (they need
@@ -38,31 +40,62 @@ FRIENDLY_MAP: dict[str, Callable[[str], bool]] = {
     "fat": lambda n: "lipid" in n.lower() or n.lower() == "fat",
     "fiber": lambda n: "fiber" in n.lower(),
     "carbs": _is_carb,  # coalesced: by summation > by difference
+    "sugar": lambda n: "sugars, total" in n.lower() or n.lower() == "sugar",
+    "sat_fat": lambda n: "fatty acids, total saturated" in n.lower() or n.lower() == "sat fat" or n.lower() == "saturated fat",
+    "sodium": lambda n: "sodium, na" in n.lower() or n.lower() == "sodium",
+    "potassium": lambda n: "potassium, k" in n.lower() or n.lower() == "potassium",
 }
 
 
 # ── Formula evaluation ─────────────────────────────────────────────────────────
 
 
+def _round_to_unit(value: float, unit: float = 0) -> float:
+    """Round to nearest multiple of unit. If unit is 0, rounds to integer."""
+    if unit <= 0:
+        return float(round(value))
+    return float(round(value / unit) * unit)
+
+
+def _roundup_to_unit(value: float, unit: float = 1) -> float:
+    if unit <= 0:
+        return value
+    return float(math.ceil(value / unit) * unit)
+
+
+def _rounddown_to_unit(value: float, unit: float = 1) -> float:
+    if unit <= 0:
+        return value
+    return float(math.floor(value / unit) * unit)
+
+
 def _eval_formula(formula: str, values: dict[str, float]) -> float:
     """Evaluate a formula with friendly values as namespace.
 
-    Uses Python's built-in eval with a restricted namespace so that
-    single-arg round() works naturally: round(1.65) == 2.
+    Uses Python's built-in eval with a restricted namespace.
+    Matches formula_engine.py's specialized rounding logic.
 
     Security: Formulas are user-authored via UserSummaryNutrient config, writable
-    only by the authenticated user for their own account. The restricted __builtins__
-    mitigates casual injection but is NOT a full sandbox. If formulas ever become
-    shareable or publicly editable, replace eval with a proper expression parser
-    (e.g., simpleeval or ast-based).
+    only by the authenticated user for their own account.
     """
-    namespace = {
-        **values,
-        "round": round,
+    # Create case-insensitive aliases for the namespace
+    # e.g. "Calories" -> values["calories"]
+    namespace = {}
+    for k, v in values.items():
+        namespace[k] = v
+        namespace[k.capitalize()] = v
+        namespace[k.replace("_", "")] = v
+        namespace[k.replace("_", "").capitalize()] = v
+
+    namespace.update({
+        "round": _round_to_unit,
+        "roundup": _roundup_to_unit,
+        "rounddown": _rounddown_to_unit,
         "min": min,
         "max": max,
         "abs": abs,
-    }
+    })
+
     try:
         result = eval(formula, {"__builtins__": {}}, namespace)  # noqa: S307
         return float(result)
@@ -128,13 +161,15 @@ def compute_item_nutrients(
     gram_weight = _get_gram_weight(food, item.quantity, item.unit)
     scale = _scale_factor(food, gram_weight)
 
-    named: dict[str, float] = {}  # nutrient name → scaled amount
-    by_id: dict[int, float] = {}  # nutrient_id → scaled amount
+    # list of (name, unit, amount, id)
+    nutrients: list[tuple[str, str, float, int]] = []
+    by_id: dict[int, float] = {}
 
     for fn in food.food_nutrients or []:
         name = fn.nutrient.name
+        unit = fn.nutrient.unit or ""
         amount = float(fn.amount_per_serving) * scale
-        named[name] = amount
+        nutrients.append((name, unit, amount, fn.nutrient_id))
         by_id[fn.nutrient_id] = amount
 
     # ── Energy coalescing ──────────────────────────────────────────────────
@@ -142,13 +177,16 @@ def compute_item_nutrients(
     energy_specific: float | None = None
     energy_plain: float | None = None
 
-    for name, amount in named.items():
+    for name, unit, amount, _ in nutrients:
         n = name.lower()
         if "atwater general" in n:
             energy_general = amount
         elif "atwater specific" in n:
             energy_specific = amount
-        elif n.startswith("energy"):
+        elif n == "energy" and unit.lower() == "kcal":
+            energy_plain = amount
+        elif n == "energy" and energy_plain is None:
+            # Fallback to any Energy entry if no kcal-specific one found yet
             energy_plain = amount
 
     if energy_general is not None:
@@ -162,7 +200,7 @@ def compute_item_nutrients(
     carb_summation: float | None = None
     carb_difference: float | None = None
 
-    for name, amount in named.items():
+    for name, _, amount, _ in nutrients:
         n = name.lower()
         if "carbohydrate" in n:
             if "summation" in n:
@@ -178,7 +216,7 @@ def compute_item_nutrients(
     for key, matcher in FRIENDLY_MAP.items():
         if key in ("calories", "carbs"):
             continue
-        val = sum(amount for name, amount in named.items() if matcher(name))
+        val = sum(amount for name, _, amount, _ in nutrients if matcher(name))
         friendly[key] = val
 
     return friendly, by_id
@@ -258,6 +296,7 @@ class NutrientCalculator:
             else:
                 value = 0.0
 
-            results.append({"name": name, "value": value, "unit": unit})
+            # Round values to 1 decimal place for UI consistency
+            results.append({"name": name, "value": round(value, 1), "unit": unit})
 
         return results
