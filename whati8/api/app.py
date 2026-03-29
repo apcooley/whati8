@@ -9,15 +9,14 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from jose.exceptions import JWTError
-from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from fastapi.responses import JSONResponse
 
+from whati8.api.limiter import limiter as shared_limiter
 from whati8.api.middleware.body_limit import BodySizeLimitMiddleware
 from whati8.api.exceptions import (
     anthropic_error_handler,
@@ -165,9 +164,19 @@ def create_app() -> FastAPI:
 
     # 4. Setup rate limiting
     if settings.rate_limit_enabled:
-        limiter = Limiter(key_func=get_remote_address)
-        app.state.limiter = limiter
-        app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        shared_limiter.reset()
+        app.state.limiter = shared_limiter
+        
+        async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            """Handle rate limit exceeded with Retry-After header."""
+            response = JSONResponse(
+                {"error": f"Rate limit exceeded: {exc.detail}"},
+                status_code=429
+            )
+            response.headers["Retry-After"] = "60"
+            return response
+        
+        app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # 5. Register exception handlers
     app.add_exception_handler(HTTPException, http_exception_handler)

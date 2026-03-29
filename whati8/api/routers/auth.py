@@ -1,9 +1,10 @@
 """Authentication endpoints for whati8 API."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from whati8.api.deps import get_current_user, get_db
+from whati8.api.limiter import limiter
 from whati8.config import settings
 from whati8.models.user import User
 from whati8.schemas.auth import Token, UserCreate, UserLogin, UserResponse
@@ -13,8 +14,9 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
+@limiter.limit("3/minute")
 async def register(
-    user_data: UserCreate, db: AsyncSession = Depends(get_db)
+    request: Request, user_data: UserCreate, db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
     """
     Register a new user account.
@@ -32,7 +34,8 @@ async def register(
 
 
 @router.post("/login", response_model=Token)
-async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)) -> Token:
+@limiter.limit("5/minute")
+async def login(request: Request, credentials: UserLogin, db: AsyncSession = Depends(get_db)) -> Token:
     """
     Authenticate and receive JWT access token.
 

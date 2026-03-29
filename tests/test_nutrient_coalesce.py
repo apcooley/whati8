@@ -10,7 +10,7 @@ Creates a fresh async engine per test to avoid event loop contamination.
 
 import pytest
 import psycopg2
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 

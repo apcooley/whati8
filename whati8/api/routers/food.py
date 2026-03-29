@@ -7,8 +7,7 @@ retrieving detailed food information with nutrients.
 
 from anthropic import APIError as AnthropicAPIError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from whati8.api.limiter import limiter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,7 +32,6 @@ from whati8.schemas.food import (
 from whati8.schemas.food_resolver import FoodResolveRequest, FoodResolveResponse
 from whati8.services.food_resolver import FoodResolverService
 
-limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/foods", tags=["foods"])
 
