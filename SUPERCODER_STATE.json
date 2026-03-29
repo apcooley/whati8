@@ -1,15 +1,15 @@
 {
-  "project": "whati8-config-consolidation",
+  "project": "whati8-caddy-tls-proxy",
   "plan_file": "PLAN.md",
-  "current_step": 3,
+  "current_step": 1,
   "total_steps": 3,
-  "status": "complete",
+  "status": "in_progress",
   "planning_model": "anthropic/claude-opus-4-6",
   "coding_model": "anthropic/claude-sonnet-4-6",
   "review_model": "anthropic/claude-opus-4-6",
   "steps": [
-    { "id": 1, "title": "Merge config.toml logic into Settings class", "status": "passed" },
-    { "id": 2, "title": "Update services to use settings instead of app_config", "status": "passed" },
-    { "id": 3, "title": "Verify consolidation and cleanup", "status": "passed" }
+    { "id": 1, "title": "Write Caddyfile + tests", "status": "in_progress" },
+    { "id": 2, "title": "Deploy Caddyfile to system Caddy", "status": "pending" },
+    { "id": 3, "title": "Verify end-to-end + document migration", "status": "pending" }
   ]
 }
