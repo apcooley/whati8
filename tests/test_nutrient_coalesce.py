@@ -79,7 +79,7 @@ def food_ids():
     """Insert test foods once, return dict, cleanup at end."""
     _cleanup()
     ids = {}
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().astimezone().isoformat()
     for key, name, fdc_id, nutrients in FOODS_SPEC:
         rows = _db(
             "INSERT INTO foods (name, serving_size, usda_fdc_id, unit) VALUES (%s, %s, %s, %s) RETURNING id",

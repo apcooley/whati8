@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from fastapi.responses import JSONResponse
 
+from whati8.api.middleware.body_limit import BodySizeLimitMiddleware
 from whati8.api.exceptions import (
     anthropic_error_handler,
     http_exception_handler,
@@ -147,7 +148,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 2. Add security headers middleware
+    # 2. Add body size limit middleware FIRST (rejects oversized requests early)
+    app.add_middleware(BodySizeLimitMiddleware)
+
+    # 3a. Add security headers middleware
     app.add_middleware(SecurityHeadersMiddleware)
 
     # 3. Add CORS middleware (for frontend access)

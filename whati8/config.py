@@ -96,6 +96,12 @@ class Settings(BaseSettings):
         description="Enable Swagger docs (default: True for dev/staging, False for prod)",
     )
 
+    # Request body size limit
+    max_body_size: int = Field(
+        default=1_048_576,
+        description="Max request body size in bytes",
+    )
+
     # Rate Limiting
     rate_limit_enabled: bool = Field(
         default=True,
