@@ -7,11 +7,120 @@ All required variables are validated on startup.
 
 import tomllib
 from pathlib import Path
+from typing import Any, Self, Tuple, Type
 
-from pydantic import Field, PostgresDsn, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, PostgresDsn, field_validator, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from whati8.constants import JWT_MIN_SECRET_LENGTH, JWT_MIN_UNIQUE_CHARS
+
+
+class RerankSettings(BaseModel):
+    """Rerank configuration settings."""
+
+    strategy: str = Field(
+        default="word_count",
+        description="Rerank strategy: 'word_count', 'confidence', 'always', or 'never'",
+    )
+    word_threshold: int = Field(
+        default=3,
+        description="Minimum word count to trigger reranking (word_count strategy)",
+    )
+    confidence_threshold: float = Field(
+        default=0.6,
+        description="Confidence threshold to trigger reranking (confidence strategy)",
+    )
+    top_k: int = Field(
+        default=10,
+        description="Number of top results to return after reranking",
+    )
+    max_candidates: int = Field(
+        default=50,
+        description="Maximum candidates to send to Rerank API",
+    )
+
+
+class SearchSettings(BaseModel):
+    """Search configuration settings."""
+
+    keyword_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for keyword search in hybrid search (0.0–1.0)",
+    )
+    semantic_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for semantic search in hybrid search (0.0–1.0)",
+    )
+    rerank: RerankSettings = Field(
+        default_factory=RerankSettings,
+        description="Rerank configuration",
+    )
+
+
+class TomlConfigSettingsSource(PydanticBaseSettingsSource):
+    """Custom settings source that loads from config.toml.
+
+    Reads config.toml once on init, caches the result, and maps
+    the [search] / [search.rerank] sections to SearchSettings.
+    """
+
+    def __init__(self, settings_cls: Type["Settings"]) -> None:
+        super().__init__(settings_cls)
+        self._toml_data = self._load_toml()
+
+    def get_field_value(self, field: Any, field_name: str) -> Tuple[Any, str, bool]:
+        """Get field value from config.toml."""
+        if field_name == "search":
+            parsed = self._parse_search(self._toml_data)
+            if parsed is not None:
+                return parsed, field_name, False
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        """Return all settings from config.toml."""
+        result: dict[str, Any] = {}
+        parsed = self._parse_search(self._toml_data)
+        if parsed is not None:
+            result["search"] = parsed
+        return result
+
+    @staticmethod
+    def _parse_search(config: dict) -> SearchSettings | None:
+        """Parse [search] section from TOML into SearchSettings."""
+        if "search" not in config:
+            return None
+        toml_search = config["search"]
+        rerank_data = toml_search.get("rerank", {})
+        return SearchSettings(
+            keyword_weight=toml_search.get("keyword_weight", 0.5),
+            semantic_weight=toml_search.get("semantic_weight", 0.5),
+            rerank=RerankSettings(**rerank_data) if rerank_data else RerankSettings(),
+        )
+
+    @staticmethod
+    def _load_toml() -> dict:
+        """Load config.toml file. Returns empty dict if missing or malformed."""
+        config_path = Path(__file__).parent.parent / "config.toml"
+        if not config_path.exists():
+            return {}
+        try:
+            with open(config_path, "rb") as f:
+                return tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                f"Invalid config.toml, using defaults: {e}"
+            )
+            return {}
 
 
 class Settings(BaseSettings):
@@ -144,12 +253,45 @@ class Settings(BaseSettings):
         description="Connection recycle time in seconds",
     )
 
+    # Search settings (nested model)
+    search: SearchSettings = Field(
+        default_factory=SearchSettings,
+        description="Search configuration",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        env_nested_delimiter="__",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        """Customize settings sources priority.
+
+        Priority (highest to lowest):
+        1. init_settings - values passed to constructor
+        2. env_settings - environment variables
+        3. dotenv_settings - .env file
+        4. toml_settings - config.toml file (custom)
+        5. file_secret_settings - secrets files
+        """
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            TomlConfigSettingsSource(settings_cls),
+            file_secret_settings,
+        )
 
     @field_validator("jwt_secret")
     @classmethod
@@ -178,7 +320,7 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def resolve_docs_enabled(self) -> "Settings":
+    def resolve_docs_enabled(self) -> Self:
         """If docs_enabled is None, default based on environment."""
         if self.docs_enabled is None:
             self.docs_enabled = self.environment != "prod"
@@ -240,30 +382,3 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
-
-
-# Load application config from config.toml
-def load_config() -> dict:
-    """Load configuration from config.toml."""
-    config_path = Path(__file__).parent.parent / "config.toml"
-    if not config_path.exists():
-        # Return defaults if config.toml doesn't exist
-        return {
-            "search": {
-                "keyword_weight": 0.5,
-                "semantic_weight": 0.5,
-                "rerank": {
-                    "strategy": "word_count",
-                    "word_threshold": 3,
-                    "confidence_threshold": 0.6,
-                    "top_k": 10,
-                    "max_candidates": 50,
-                },
-            }
-        }
-    
-    with open(config_path, "rb") as f:
-        return tomllib.load(f)
-
-
-app_config = load_config()

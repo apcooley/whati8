@@ -1,4 +1,3 @@
-import pytest
 from whati8.services.nutrient_calculator import _eval_formula, compute_item_nutrients, NutrientInput
 
 def test_eval_formula_complex():

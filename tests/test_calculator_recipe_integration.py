@@ -48,7 +48,6 @@ async def protein_nutrient(db_session):
 @pytest.fixture
 async def recipe_user(db_session):
     """Create a test user for recipe tests."""
-    from whati8.models.user import User
     user = User(username="recipe_calc_test", email="recipe_calc@test.com", password_hash="x")
     db_session.add(user)
     await db_session.flush()

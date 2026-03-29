@@ -41,9 +41,11 @@ from whati8.services.embedding_service import (
 
 logger = get_logger(__name__)
 
-# Hybrid search weights
-KEYWORD_WEIGHT = 0.5
-SEMANTIC_WEIGHT = 0.5
+# Hybrid search weights — cached at import time from settings singleton.
+# Changes to settings after import won't be reflected. This is intentional
+# for performance; the singleton is fully resolved at startup (env > .env > toml > defaults).
+KEYWORD_WEIGHT = settings.search.keyword_weight
+SEMANTIC_WEIGHT = settings.search.semantic_weight
 # Bonus for token-level signals (added on top of keyword score)
 TOKEN_EXACT_BONUS = 0.3
 TOKEN_STARTS_WITH_BONUS = 0.15
@@ -338,7 +340,10 @@ Extract all food items from the input text."""
             modifier_lower = (portion.modifier or "").lower()
             # Check if modifier equals or starts with the unit
             modifier_first_word = modifier_lower.split()[0] if modifier_lower else ""
-            if normalized_unit == modifier_lower or normalized_unit == modifier_first_word:
+            if (
+                normalized_unit == modifier_lower
+                or normalized_unit == modifier_first_word
+            ):
                 logger.debug(f"Exact match on modifier: {portion.modifier}")
                 return portion
 
@@ -356,7 +361,9 @@ Extract all food items from the input text."""
             for portion in portions:
                 unit_name_lower = (portion.unit_name or "").lower()
                 if "piece" in unit_name_lower or "serving" in unit_name_lower:
-                    logger.debug(f"Fallback match on piece/serving: {portion.unit_name}")
+                    logger.debug(
+                        f"Fallback match on piece/serving: {portion.unit_name}"
+                    )
                     return portion
 
         return None
@@ -377,11 +384,11 @@ Extract all food items from the input text."""
             # Build display name - strip quantity prefix to avoid duplication
             # e.g., "6 crackers" → "crackers" (the 6 is stored in amount field)
             unit_part = p.modifier if p.modifier else p.unit_name
-            
+
             # Strip leading digits followed by space (e.g., "6 crackers" → "crackers")
             # But preserve units like "113g" (no space after digits)
-            cleaned_unit = _re.sub(r'^\d+(\.\d+)?\s+', '', unit_part)
-            
+            cleaned_unit = _re.sub(r"^\d+(\.\d+)?\s+", "", unit_part)
+
             display_name = f"{cleaned_unit} ({float(p.gram_weight)}g)"
 
             option = PortionOption(
@@ -624,8 +631,7 @@ Extract all food items from the input text."""
                     ):
                         nutrients_map["carbs"] = fn.amount_per_serving
                     elif (
-                        "total lipid" in nutrient_name
-                        or "fat, total" in nutrient_name
+                        "total lipid" in nutrient_name or "fat, total" in nutrient_name
                     ):
                         nutrients_map["fat"] = fn.amount_per_serving
 
@@ -833,9 +839,11 @@ Extract all food items from the input text."""
             # Use the food's default portion, not the parsed quantity/unit
             # This ensures "100 cookies" becomes "1 cookie" with weight from DB
             display_quantity = 1.0  # Always 1 unit of the food's portion
-            display_unit = parsed.unit  # Keep parsed unit for display, but will be overridden below
+            display_unit = (
+                parsed.unit
+            )  # Keep parsed unit for display, but will be overridden below
             weight_grams = None
-            
+
             serving_size = selected_match.serving_size if selected_match else None
             serving_unit = selected_match.unit if selected_match else None
 
@@ -853,13 +861,17 @@ Extract all food items from the input text."""
                     }
                     for p in selected_match.portions
                 ]
-                
+
                 # Use the FIRST portion as the default display
                 # This gives us the proper unit_name and gram_weight
                 first_portion = item_portions[0]
-                display_unit = first_portion["unit_name"]  # Override with food's actual unit
+                display_unit = first_portion[
+                    "unit_name"
+                ]  # Override with food's actual unit
                 display_quantity = first_portion["amount"]  # Use portion amount
-                weight_grams = first_portion["gram_weight"]  # Pre-populate weight from portion
+                weight_grams = first_portion[
+                    "gram_weight"
+                ]  # Pre-populate weight from portion
 
             # Create flattened item
             item = MultiFoodConfirmationItem(

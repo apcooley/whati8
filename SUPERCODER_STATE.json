@@ -1,16 +1,15 @@
 {
-  "project": "whati8-refactor-nutrient-calc",
+  "project": "whati8-config-consolidation",
   "plan_file": "PLAN.md",
-  "current_step": 1,
-  "total_steps": 4,
-  "status": "in_progress",
+  "current_step": 3,
+  "total_steps": 3,
+  "status": "complete",
   "planning_model": "anthropic/claude-opus-4-6",
   "coding_model": "anthropic/claude-sonnet-4-6",
   "review_model": "anthropic/claude-opus-4-6",
   "steps": [
-    { "id": 1, "title": "Create NutrientCalculator + Tests", "status": "in_progress" },
-    { "id": 2, "title": "Replace compute_food_summary + per-log summaries", "status": "pending" },
-    { "id": 3, "title": "Replace daily totals (fix bug)", "status": "pending" },
-    { "id": 4, "title": "Replace recipe materialization + cleanup", "status": "pending" }
+    { "id": 1, "title": "Merge config.toml logic into Settings class", "status": "passed" },
+    { "id": 2, "title": "Update services to use settings instead of app_config", "status": "passed" },
+    { "id": 3, "title": "Verify consolidation and cleanup", "status": "passed" }
   ]
 }

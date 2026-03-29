@@ -6,7 +6,7 @@ including ordering, custom names, and formula-based custom metrics.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,15 +21,14 @@ router = APIRouter(prefix="/summary-config", tags=["Summary Config"])
 
 
 class SummaryItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     nutrient_id: int | None
     display_name: str
     display_unit: str
     display_order: int
     formula: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class SummaryItemCreate(BaseModel):
@@ -75,9 +74,7 @@ async def _ensure_defaults(db: AsyncSession, user_id: int) -> list[UserSummaryNu
     for i, (name, unit, usda_name) in enumerate(DEFAULT_SUMMARY):
         # Find nutrient by name
         nut_result = await db.execute(
-            select(Nutrient).where(
-                Nutrient.name.ilike(f"%{usda_name}%")
-            )
+            select(Nutrient).where(Nutrient.name.ilike(f"%{usda_name}%"))
         )
         nutrients = list(nut_result.scalars().all())
         nutrient = None
@@ -89,7 +86,9 @@ async def _ensure_defaults(db: AsyncSession, user_id: int) -> list[UserSummaryNu
                     nutrient = n
                     break
                 elif n.name.lower() == "energy" and n.unit == "kcal":
-                    nutrient = n  # keep looking for kJ version, but accept kcal as fallback
+                    nutrient = (
+                        n  # keep looking for kJ version, but accept kcal as fallback
+                    )
             elif n.name.lower() == usda_name:
                 nutrient = n
                 break
@@ -119,7 +118,8 @@ def _to_response(item: UserSummaryNutrient) -> SummaryItemResponse:
     return SummaryItemResponse(
         id=item.id,
         nutrient_id=item.nutrient_id,
-        display_name=item.display_name or (item.nutrient.name if item.nutrient else "Unknown"),
+        display_name=item.display_name
+        or (item.nutrient.name if item.nutrient else "Unknown"),
         display_unit=item.display_unit or (item.nutrient.unit if item.nutrient else ""),
         display_order=item.display_order,
         formula=item.formula,
@@ -216,7 +216,10 @@ async def update_summary_item(
     """Update a summary metric."""
     result = await db.execute(
         select(UserSummaryNutrient)
-        .where(UserSummaryNutrient.id == item_id, UserSummaryNutrient.user_id == current_user.id)
+        .where(
+            UserSummaryNutrient.id == item_id,
+            UserSummaryNutrient.user_id == current_user.id,
+        )
         .options(selectinload(UserSummaryNutrient.nutrient))
     )
     item = result.scalar_one_or_none()
@@ -248,15 +251,16 @@ async def delete_summary_item(
 ):
     """Remove a metric from the summary bar."""
     result = await db.execute(
-        select(UserSummaryNutrient)
-        .where(UserSummaryNutrient.id == item_id, UserSummaryNutrient.user_id == current_user.id)
+        select(UserSummaryNutrient).where(
+            UserSummaryNutrient.id == item_id,
+            UserSummaryNutrient.user_id == current_user.id,
+        )
     )
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(404, "Summary item not found")
     await db.delete(item)
     await db.commit()
-
 
 
 @router.get("/available-nutrients", response_model=list[dict])
@@ -266,15 +270,18 @@ async def list_available_nutrients(
 ):
     """List all available nutrients for adding to summary."""
     from whati8.services.formula_engine import get_friendly_name
+
     result = await db.execute(select(Nutrient).order_by(Nutrient.name))
     nutrients = result.scalars().all()
     out = []
     for n in nutrients:
         friendly, unit = get_friendly_name(n.name)
-        out.append({
-            "nutrient_id": n.id,
-            "name": n.name,
-            "friendly_name": friendly,
-            "unit": unit or n.unit,
-        })
+        out.append(
+            {
+                "nutrient_id": n.id,
+                "name": n.name,
+                "friendly_name": friendly,
+                "unit": unit or n.unit,
+            }
+        )
     return out

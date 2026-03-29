@@ -1,34 +1,27 @@
-# PLAN.md — Refactor: Single Nutrient Calculation Path
+# PLAN.md — Config Consolidation
 
 ## Goal
-Replace 6+ duplicated nutrient computation paths with one function: `NutrientCalculator.compute_summary()`.
-Fix the daily summary bug (missing Atwater energy coalescing).
+Consolidate `config.toml` logic into the Pydantic `Settings` class in `whati8/config.py` to have a single source of truth for all application settings.
 
 ## Tech Stack
-- Backend: Python 3.11, FastAPI, SQLAlchemy (async), PostgreSQL 16
-- Testing: pytest
-- Linter: ruff
+- Python 3.11
+- Pydantic Settings v2
+- Pytest
 
 ## Steps
 
-### Step 1: Create NutrientCalculator + Tests
-Create `whati8/services/nutrient_calculator.py` with:
-- `NutrientInput` dataclass (food, quantity, unit, portions)
-- `compute_summary(items, config, formula_mode)` — the one function
-- Internal helpers: `_scale_nutrients()`, `_coalesce()`, `_is_energy()`, `_is_carb()`
-- Name-based nutrient classification (no hardcoded IDs)
-- Tests covering: coalescing, USDA vs custom scaling, portion matching, formula modes
+### Step 1: Refactor `whati8/config.py`
+- Define `SearchSettings` and `RerankSettings` Pydantic models.
+- Add them to the main `Settings` class as nested fields.
+- Implement a `model_validator` or logic in `__init__` to load values from `config.toml` (if present) as defaults.
+- Remove `load_config()` and `app_config` global.
 
-### Step 2: Replace compute_food_summary + per-log summaries
-- `DailyLogService.compute_food_summary()` → `NutrientCalculator.compute_summary()`
-- Per-log `summary_nutrients` in get_daily_logs meal groups → same
-- `/foods/{id}/summary` endpoint delegates to calculator
+### Step 2: Update Services
+- **`whati8/services/rerank_service.py`**: Update `rerank_food_matches` to use `settings.search.rerank` instead of `app_config`.
+- **`whati8/services/food_resolver.py`**: Pull `KEYWORD_WEIGHT` and `SEMANTIC_WEIGHT` from `settings.search`.
+- **`whati8/services/search_analytics.py`**: Update hardcoded weights to use `settings.search`.
 
-### Step 3: Replace daily totals (fix the bug)
-- Daily summary in `get_daily_logs()` → `NutrientCalculator.compute_summary(all_logs, config, formula_mode="per_item")`
-- Delete `nutrient_totals`, `per_log_friendly`, `friendly_values` manual computation
-
-### Step 4: Replace recipe materialization + cleanup
-- `_materialize_recipe()` → `NutrientCalculator.compute_summary(ingredients, config=[], formula_mode="total")`
-- `_recalculate_nutrition()` → same
-- Delete old coalesce functions, hardcoded ID constants, `_portion_scale`
+### Step 3: Verification & Cleanup
+- Add a test in `tests/test_config.py` to verify `config.toml` values are correctly picked up.
+- Remove `config.toml` (or keep as a template?) — actually, the goal is "config consolidation", so we might want to move those into `.env` or just keep the defaults in code and allow overrides via env vars.
+- Update `README.md` or `DEPLOYMENT.md` if needed.
