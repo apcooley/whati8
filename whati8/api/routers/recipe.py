@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from whati8.api.deps import get_current_user, get_db
-from whati8.models import Food, FoodNutrient, Nutrient, User
+from whati8.models import Food, FoodNutrient, User
 from whati8.models.recipe import Recipe, RecipeIngredient
 from whati8.schemas.recipe import (
     DependencyCheckResponse,

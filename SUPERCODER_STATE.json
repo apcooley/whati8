@@ -1,0 +1,21 @@
+{
+  "project": "whati8-phase1-hardening",
+  "plan_file": "PLAN.md",
+  "current_step": 1,
+  "total_steps": 9,
+  "status": "in_progress",
+  "planning_model": "anthropic/claude-opus-4-6",
+  "coding_model": "anthropic/claude-sonnet-4-6",
+  "review_model": "anthropic/claude-opus-4-6",
+  "steps": [
+    { "id": 1, "title": "API Versioning + Health Check", "status": "in_progress" },
+    { "id": 2, "title": "Environment Config + CORS Tightening", "status": "pending" },
+    { "id": 3, "title": "Request Body Size Limits", "status": "pending" },
+    { "id": 4, "title": "Per-IP Auth Rate Limiting", "status": "pending" },
+    { "id": 5, "title": "Refresh Tokens", "status": "pending" },
+    { "id": 6, "title": "API Keys", "status": "pending" },
+    { "id": 7, "title": "Database Backup Script", "status": "pending" },
+    { "id": 8, "title": "Containerization + Dev/Prod", "status": "pending" },
+    { "id": 9, "title": "Deployment Docs", "status": "pending" }
+  ]
+}

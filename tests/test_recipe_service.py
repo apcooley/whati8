@@ -5,15 +5,13 @@ detection, versioning, and cascade updates.
 """
 
 import pytest
-from decimal import Decimal
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from whati8.models import Food, User, FoodPortion
 from whati8.models.food_nutrient import FoodNutrient
 from whati8.models.nutrient import Nutrient
-from whati8.models.recipe import Recipe, RecipeIngredient, RecipeVersion
+from whati8.models.recipe import RecipeVersion
 from whati8.models.user_food import UserFood
 
 
@@ -441,14 +439,24 @@ class TestVersioning:
         assert recipe.current_version == 1  # no version bump
         assert recipe.current_food_id == old_food_id  # same food
 
-    async def test_servings_change_no_new_version(self, db_session: AsyncSession, user: User, sample_foods):
+    async def test_servings_change_no_new_version(self, db_session: AsyncSession, user: User, energy_nutrient, protein_nutrient):
         """Changing servings count should NOT create a new version but SHOULD recalculate nutrition."""
         from whati8.services.recipe_service import RecipeService
+        
+        # Create a fresh food for this test to avoid session cache pollution
+        fresh_flour = Food(name="FreshFlour", serving_size=100, unit="g", created_by_user_id=user.id)
+        db_session.add(fresh_flour)
+        await db_session.flush()
+        db_session.add(FoodNutrient(food_id=fresh_flour.id, nutrient_id=energy_nutrient.id, amount_per_serving=364))
+        db_session.add(FoodNutrient(food_id=fresh_flour.id, nutrient_id=protein_nutrient.id, amount_per_serving=10))
+        from whati8.models import FoodPortion
+        db_session.add(FoodPortion(food_id=fresh_flour.id, amount=1, unit_name="g", gram_weight=1, portion_description="grams", sequence_number=1))
+        await db_session.flush()
         
         recipe = await RecipeService.create_recipe(
             db=db_session, user_id=user.id, name="Servings Change",
             servings=4, serving_unit="serving",
-            ingredients=[{"food_id": sample_foods["Flour"].id, "quantity": 200, "unit": "grams", "portion_description": "grams"}],
+            ingredients=[{"food_id": fresh_flour.id, "quantity": 200, "unit": "grams", "portion_description": "grams"}],
         )
         # 200g flour = 728 kcal, 4 servings = 182 kcal/serving
         food = await db_session.get(Food, recipe.current_food_id)

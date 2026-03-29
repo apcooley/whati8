@@ -29,6 +29,8 @@ function addTimezoneToUrl(url: string, timezone: string): string {
   return `${url}${separator}user_timezone=${encodeURIComponent(timezone)}`;
 }
 
+const API_BASE = '/api/v1';
+
 export async function apiRequest<T>(
   url: string,
   options: RequestInit = {}
@@ -36,9 +38,12 @@ export async function apiRequest<T>(
   const { token } = get(authStore);
   const timezone = getUserTimezone();
 
+  // Prepend versioned base path
+  const versionedUrl = `${API_BASE}${url}`;
+
   // Add timezone to URL for GET requests
   // For POST/PUT, timezone can be in request body or query param
-  const urlWithTimezone = addTimezoneToUrl(url, timezone);
+  const urlWithTimezone = addTimezoneToUrl(versionedUrl, timezone);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',

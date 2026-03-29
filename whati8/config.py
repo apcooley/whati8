@@ -8,7 +8,7 @@ All required variables are validated on startup.
 import tomllib
 from pathlib import Path
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from whati8.constants import JWT_MIN_SECRET_LENGTH, JWT_MIN_UNIQUE_CHARS
@@ -41,9 +41,14 @@ class Settings(BaseSettings):
         description="JWT signing algorithm",
     )
     jwt_expiration_hours: int = Field(
-        default=24,
+        default=1,
         ge=1,
         description="JWT token expiration time in hours",
+    )
+    refresh_token_expiration_days: int = Field(
+        default=30,
+        ge=1,
+        description="Refresh token expiration time in days",
     )
 
     # AI/LLM Service
@@ -84,6 +89,22 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
         description="CORS allowed origins (comma-separated in env)",
+    )
+
+    # Environment
+    environment: str = Field(
+        default="dev",
+        description="Environment: dev, staging, or prod",
+    )
+    docs_enabled: bool | None = Field(
+        default=None,
+        description="Enable Swagger docs (default: True for dev/staging, False for prod)",
+    )
+
+    # Request body size limit
+    max_body_size: int = Field(
+        default=1_048_576,
+        description="Max request body size in bytes",
     )
 
     # Rate Limiting
@@ -138,18 +159,48 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"JWT secret must be at least {JWT_MIN_SECRET_LENGTH} characters"
             )
-
         unique_chars = len(set(v))
         if unique_chars < JWT_MIN_UNIQUE_CHARS:
             raise ValueError(
-                f"JWT secret must have at least {JWT_MIN_UNIQUE_CHARS} unique characters. "
-                "Use a cryptographically random string."
+                f"JWT secret must have at least {JWT_MIN_UNIQUE_CHARS} unique characters"
             )
-
         if v == v[0] * len(v):
             raise ValueError("JWT secret cannot be all the same character")
-
         return v
+
+    @field_validator("environment")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        """Validate environment is one of dev, staging, prod."""
+        valid = {"dev", "staging", "prod"}
+        if v not in valid:
+            raise ValueError(f"environment must be one of {valid}, got '{v}'")
+        return v
+
+    @model_validator(mode="after")
+    def resolve_docs_enabled(self) -> "Settings":
+        """If docs_enabled is None, default based on environment."""
+        if self.docs_enabled is None:
+            self.docs_enabled = self.environment != "prod"
+        return self
+
+    def get_cors_origins(self) -> list[str]:
+        """Return CORS origins based on environment."""
+        localhost_defaults = [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8080",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+        ]
+        if self.environment == "prod":
+            return list(self.allowed_origins)
+        # dev and staging: allowed_origins + localhost defaults (deduplicated)
+        combined = list(self.allowed_origins)
+        for origin in localhost_defaults:
+            if origin not in combined:
+                combined.append(origin)
+        return combined
 
     @field_validator("anthropic_api_key")
     @classmethod

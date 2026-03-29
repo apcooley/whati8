@@ -17,7 +17,6 @@ Example formulas:
 import ast
 import math
 import operator
-from typing import Any
 
 # Map friendly names to USDA nutrient names (lowercase)
 FRIENDLY_TO_USDA = {

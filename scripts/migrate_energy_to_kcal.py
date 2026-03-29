@@ -26,8 +26,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from whati8.database import AsyncSessionLocal
 from whati8.models import Nutrient, Food, FoodNutrient
@@ -52,7 +51,7 @@ async def migrate():
         
         energy_nutrient.unit = "kcal"
         await db.commit()
-        print(f"✓ Changed Energy nutrient unit: kJ → kcal")
+        print("✓ Changed Energy nutrient unit: kJ → kcal")
         
         # Step 2: Convert custom food energy values from kJ back to kcal
         print("\nStep 2: Converting custom food energy values...")

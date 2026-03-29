@@ -2,7 +2,6 @@
 Recipe and RecipeIngredient models for user-created recipes.
 """
 
-from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 

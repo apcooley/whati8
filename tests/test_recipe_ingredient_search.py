@@ -22,7 +22,7 @@ async def client(db_session, seed_test_data, test_user):
     app.dependency_overrides[get_db] = lambda: db_session
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(transport=transport, base_url="http://test/api/v1") as ac:
         resp = await ac.post("/auth/login", json={
             "login": "testuser", "password": "testpassword123",
         })

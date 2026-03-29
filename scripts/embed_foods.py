@@ -14,8 +14,7 @@ import argparse
 import asyncio
 import time
 
-import sqlalchemy as sa
-from sqlalchemy import bindparam, text
+from sqlalchemy import text
 
 from whati8.database import engine
 from whati8.services.embedding_service import (

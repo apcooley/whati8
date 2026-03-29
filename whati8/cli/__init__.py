@@ -86,17 +86,17 @@ def serve(host: str, port: int, reload: bool, kill_existing: bool):
                 for attempt in range(1, 6):
                     time.sleep(1)
                     if not is_port_in_use(port):
-                        click.echo(f"✅ Port is now available")
+                        click.echo("✅ Port is now available")
                         break
                     if attempt < 5:
                         click.echo(f"⏳ Waiting for port to be released... ({attempt}s)")
                 else:
-                    click.echo(f"⚠️  Port still in use after waiting. Trying anyway...")
+                    click.echo("⚠️  Port still in use after waiting. Trying anyway...")
             else:
-                click.echo(f"⚠️  Could not kill existing process. Trying anyway...")
+                click.echo("⚠️  Could not kill existing process. Trying anyway...")
         else:
             click.echo(f"❌ Port {port} is already in use.", err=True)
-            click.echo(f"   Use --kill-existing to auto-kill, or:")
+            click.echo("   Use --kill-existing to auto-kill, or:")
             click.echo(f"   pkill -f 'uvicorn.*{port}'")
             sys.exit(1)
 

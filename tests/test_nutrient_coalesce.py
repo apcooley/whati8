@@ -10,10 +10,9 @@ Creates a fresh async engine per test to avoid event loop contamination.
 
 import pytest
 import psycopg2
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import text
 
 from whati8.config import settings
 from whati8.services.daily_log_service import DailyLogService
@@ -80,7 +79,7 @@ def food_ids():
     """Insert test foods once, return dict, cleanup at end."""
     _cleanup()
     ids = {}
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().astimezone().isoformat()
     for key, name, fdc_id, nutrients in FOODS_SPEC:
         rows = _db(
             "INSERT INTO foods (name, serving_size, usda_fdc_id, unit) VALUES (%s, %s, %s, %s) RETURNING id",

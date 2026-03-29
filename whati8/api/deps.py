@@ -1,6 +1,6 @@
 """Shared dependencies for whati8 API."""
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose.exceptions import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,41 +12,66 @@ from whati8.services.auth import AuthService
 # Re-export database dependency
 __all__ = ["get_db", "get_current_user"]
 
-# HTTP Bearer token security scheme
-security = HTTPBearer()
+# HTTP Bearer token security scheme — optional so we can also check X-API-Key
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ) -> User:
     """
-    Extract JWT from Authorization header, validate, and return user.
+    Extract credentials and return the authenticated user.
 
-    Flow:
-    1. Extract token from Bearer token in Authorization header
-    2. Decode and validate JWT using AuthService.decode_token()
-    3. Fetch user by ID from token payload
-    4. Return user or raise 401/404
-
-    Args:
-        credentials: HTTP Bearer token credentials
-        db: Database session
-
-    Returns:
-        Authenticated User object
+    Supports three auth methods (in priority order):
+    1. X-API-Key header
+    2. Authorization: Bearer wi8_... (API key)
+    3. Authorization: Bearer <jwt> (JWT token)
 
     Raises:
-        HTTPException 401: Invalid/expired token or credentials validation failed
+        HTTPException 401: Invalid credentials
         HTTPException 404: User not found in database
     """
+    # Import here to avoid circular imports
+    from whati8.services.api_key_service import ApiKeyService
+
+    # 1. Check X-API-Key header
+    api_key_header = request.headers.get("X-API-Key") if request else None
+    if api_key_header:
+        user = await ApiKeyService.validate_api_key(db, api_key_header)
+        if user:
+            return user
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 2. Check Bearer token
+    if not credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     token = credentials.credentials
 
-    try:
-        # Decode and validate JWT token
-        payload = AuthService.decode_token(token)
+    # 2a. API key via Bearer
+    if token.startswith("wi8_"):
+        user = await ApiKeyService.validate_api_key(db, token)
+        if user:
+            return user
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or revoked API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-        # Fetch user from database
+    # 2b. JWT token
+    try:
+        payload = AuthService.decode_token(token)
         user = await AuthService.get_user_by_id(db, payload.sub)
 
         if not user:

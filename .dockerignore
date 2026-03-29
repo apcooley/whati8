@@ -1,0 +1,16 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+node_modules
+.pytest_cache
+.ruff_cache
+*.egg-info
+dist
+build
+.garth
+data/*.duckdb
+.DS_Store

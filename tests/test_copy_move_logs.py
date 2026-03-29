@@ -9,7 +9,6 @@ Endpoints:
 import pytest
 import psycopg2
 import httpx
-from datetime import date, datetime
 
 SERVER = "http://192.168.1.11:9428"
 TEST_USER_ID = 2  # testbot

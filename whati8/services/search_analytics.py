@@ -1,6 +1,5 @@
 """Search analytics and selection logging."""
 
-import asyncio
 from typing import Optional
 
 from sqlalchemy import func, select, text
@@ -136,7 +135,7 @@ async def _get_food_rankings(
                 result["hybrid_score"] = float(row[1])
                 break
                 
-    except Exception as e:
+    except Exception:
         # If semantic search fails, just log trigram data
         pass
     

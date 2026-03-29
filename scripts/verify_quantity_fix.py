@@ -7,7 +7,6 @@ to demonstrate the fix works correctly.
 """
 
 import re
-from typing import Optional
 
 
 def get_serving_label_old(qty: float, unit: str) -> str:

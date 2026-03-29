@@ -1,7 +1,9 @@
 """Authentication service for user management and JWT tokens."""
 
 import asyncio
-from datetime import datetime, timedelta
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from jose import jwt
 from sqlalchemy import select, or_
@@ -10,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from whati8.config import settings
 from whati8.logging_config import get_logger
 from whati8.models import User
+from whati8.models.refresh_token import RefreshToken
 from whati8.schemas.auth import UserCreate, TokenPayload
 
 logger = get_logger(__name__)
@@ -101,3 +104,82 @@ class AuthService:
             return None
         logger.info(f"User authenticated: {user.username} (ID: {user.id})")
         return user
+
+    @staticmethod
+    async def create_refresh_token(db: AsyncSession, user_id: int) -> str:
+        """Create a refresh token for a user, store hash in DB, return plaintext."""
+        plaintext = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(plaintext.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            days=settings.refresh_token_expiration_days
+        )
+        refresh_token = RefreshToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            revoked=False,
+        )
+        db.add(refresh_token)
+        await db.commit()
+        return plaintext
+
+    @staticmethod
+    async def validate_refresh_token(
+        db: AsyncSession, token: str
+    ) -> RefreshToken | None:
+        """Validate a refresh token; returns the RefreshToken model or None."""
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        result = await db.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        )
+        rt = result.scalar_one_or_none()
+        if rt is None:
+            return None
+        if rt.revoked:
+            return None
+        now = datetime.now(timezone.utc)
+        if rt.expires_at.tzinfo is None:
+            expires_at = rt.expires_at.replace(tzinfo=timezone.utc)
+        else:
+            expires_at = rt.expires_at
+        if now > expires_at:
+            return None
+        return rt
+
+    @staticmethod
+    async def revoke_refresh_token(db: AsyncSession, token: str, user_id: int) -> bool:
+        """Revoke a refresh token by marking it as revoked.
+        
+        Only revokes if the token belongs to the specified user (ownership check).
+        Returns True if token was found and revoked, False otherwise.
+        """
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        result = await db.execute(
+            select(RefreshToken).where(
+                RefreshToken.token_hash == token_hash,
+                RefreshToken.user_id == user_id,
+            )
+        )
+        rt = result.scalar_one_or_none()
+        if rt is None:
+            return False
+        rt.revoked = True
+        await db.commit()
+        return True
+
+    @staticmethod
+    async def rotate_refresh_token(
+        db: AsyncSession, old_token: str
+    ) -> tuple[str, str]:
+        """Rotate refresh token: revoke old, create new access + refresh tokens."""
+        rt = await AuthService.validate_refresh_token(db, old_token)
+        if rt is None:
+            raise ValueError("Invalid or expired refresh token")
+        user_id = rt.user_id
+        # Revoke old token and create new one in a single transaction
+        rt.revoked = True
+        await db.flush()  # Don't commit yet — let create_refresh_token's commit cover both
+        access_token = AuthService.create_access_token(user_id)
+        new_refresh_token = await AuthService.create_refresh_token(db, user_id)
+        # create_refresh_token commits, which also commits the revocation above
+        return access_token, new_refresh_token

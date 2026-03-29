@@ -11,8 +11,6 @@ Usage:
 import argparse
 import asyncio
 import json
-import sys
-from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

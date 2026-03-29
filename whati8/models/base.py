@@ -6,7 +6,7 @@ Provides:
 - TimestampMixin: Automatic created_at and updated_at timestamps (timezone-aware UTC)
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import MetaData, func, DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column

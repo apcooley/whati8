@@ -3,19 +3,16 @@
 import logging
 
 from fastapi import APIRouter, Depends, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from whati8.api.deps import get_current_user, get_db
+from whati8.api.limiter import limiter
 from whati8.config import settings
 from whati8.models import User
 from whati8.schemas.agent import AgentChatRequest, AgentChatResponse
 from whati8.services.agent_service import AgentService
 
 logger = logging.getLogger(__name__)
-
-limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
