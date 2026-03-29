@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from whati8.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from whati8.models.api_key import ApiKey
     from whati8.models.food import Food
     from whati8.models.food_log import FoodLog
     from whati8.models.meal import Meal
@@ -68,6 +69,10 @@ class User(Base, TimestampMixin):
         cascade="all, delete-orphan",
     )
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    api_keys: Mapped[list["ApiKey"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )

@@ -183,7 +183,6 @@ class TestRefreshTokenExpiry:
     async def test_expired_refresh_token_rejected(self, auth_client, db_session):
         """A refresh token past its expiry should return 401."""
         from datetime import datetime, timedelta, timezone
-        from whati8.services.auth import AuthService
         from whati8.models.refresh_token import RefreshToken
         from sqlalchemy import select
         import hashlib

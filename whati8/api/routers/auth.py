@@ -1,13 +1,15 @@
 """Authentication endpoints for whati8 API."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from whati8.api.deps import get_current_user, get_db
 from whati8.api.limiter import limiter
 from whati8.config import settings
 from whati8.models.user import User
+from whati8.schemas.api_key import ApiKeyCreate, ApiKeyCreatedResponse, ApiKeyResponse
 from whati8.schemas.auth import LogoutRequest, RefreshRequest, Token, UserCreate, UserLogin, UserResponse
+from whati8.services.api_key_service import ApiKeyService
 from whati8.services.auth import AuthService
 
 router = APIRouter()
@@ -132,3 +134,39 @@ async def get_current_user_info(
     Raises 401 if token invalid/expired.
     """
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/api-keys", response_model=ApiKeyCreatedResponse, status_code=201)
+@limiter.limit("10/minute")
+async def create_api_key(
+    request: Request,
+    key_data: ApiKeyCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApiKeyCreatedResponse:
+    """Create a new API key for the current user."""
+    result = await ApiKeyService.create_api_key(db, current_user.id, key_data.name)
+    return ApiKeyCreatedResponse(**result)
+
+
+@router.get("/api-keys", response_model=list[ApiKeyResponse])
+async def list_api_keys(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ApiKeyResponse]:
+    """List all active API keys for the current user."""
+    keys = await ApiKeyService.list_api_keys(db, current_user.id)
+    return [ApiKeyResponse(**k) for k in keys]
+
+
+@router.delete("/api-keys/{key_id}", status_code=204)
+async def revoke_api_key(
+    key_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Revoke an API key."""
+    revoked = await ApiKeyService.revoke_api_key(db, current_user.id, key_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return Response(status_code=204)

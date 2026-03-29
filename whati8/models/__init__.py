@@ -4,6 +4,7 @@ SQLAlchemy models for whati8 application.
 All models are imported here to ensure they're discovered by Alembic.
 """
 
+from whati8.models.api_key import ApiKey
 from whati8.models.base import Base
 from whati8.models.food import Food
 from whati8.models.food_log import FoodLog
@@ -19,6 +20,7 @@ from whati8.models.user_goal import UserGoal
 from whati8.models.user_summary_nutrient import UserSummaryNutrient
 
 __all__ = [
+    "ApiKey",
     "Base",
     "User",
     "Food",
