@@ -87,16 +87,16 @@ describe('parseFraction', () => {
 
 
 describe('Source code checks', () => {
-  it('PhotoResults uses parseFraction, not raw parseFloat for qty', async () => {
+  it('FoodEntryForm uses parseFraction, not raw parseFloat for qty', async () => {
     const fs = await import('fs');
-    const source = fs.readFileSync('src/lib/components/PhotoResults.svelte', 'utf-8');
+    const source = fs.readFileSync('src/lib/components/FoodEntryForm.svelte', 'utf-8');
     // Should use parseFraction for converting custom_qty
     expect(source).toContain('parseFraction');
   });
 
-  it('PhotoResults qty input is type=text not type=number', async () => {
+  it('FoodEntryForm qty input is type=text not type=number', async () => {
     const fs = await import('fs');
-    const source = fs.readFileSync('src/lib/components/PhotoResults.svelte', 'utf-8');
+    const source = fs.readFileSync('src/lib/components/FoodEntryForm.svelte', 'utf-8');
     // Qty per serving input should allow fractions (type=text, not type=number)
     // Look for the custom_qty input
     const qtyInputMatch = source.match(/custom_qty[\s\S]{0,200}type="(\w+)"/);
@@ -104,17 +104,17 @@ describe('Source code checks', () => {
     expect(qtyInputMatch![1]).toBe('text');
   });
 
-  it('PhotoResults volume_amount input is type=text not type=number', async () => {
+  it('FoodEntryForm volume_amount input is type=text not type=number', async () => {
     const fs = await import('fs');
-    const source = fs.readFileSync('src/lib/components/PhotoResults.svelte', 'utf-8');
+    const source = fs.readFileSync('src/lib/components/FoodEntryForm.svelte', 'utf-8');
     const volInputMatch = source.match(/volume_amount[\s\S]{0,200}type="(\w+)"/);
     expect(volInputMatch).toBeTruthy();
     expect(volInputMatch![1]).toBe('text');
   });
 
-  it('PhotoResults qty regex matches fractions in serving descriptions', async () => {
+  it('FoodEntryForm qty regex matches fractions in serving descriptions', async () => {
     const fs = await import('fs');
-    const source = fs.readFileSync('src/lib/components/PhotoResults.svelte', 'utf-8');
+    const source = fs.readFileSync('src/lib/components/FoodEntryForm.svelte', 'utf-8');
     // The regex for parsing qty from serving description should handle "1/3 cup"
     // It should NOT be limited to just [\d.]+ which misses fractions
     expect(source).not.toMatch(/qtyMatch.*\[\\d\.\]\+/);

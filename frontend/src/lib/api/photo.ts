@@ -19,7 +19,7 @@ export async function recognizePhoto(file: File): Promise<RecognitionResult> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch('/photo/recognize', {
+  const response = await fetch('/api/v1/photo/recognize', {
     method: 'POST',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

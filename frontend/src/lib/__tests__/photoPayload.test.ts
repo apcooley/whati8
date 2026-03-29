@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 
 /** 
  * Extracted payload builder - mirrors the logic in AddFoodView.handlePhotoSave
- * and PhotoResults.handleSave
+ * and FoodEntryForm.handleSave
  */
 interface PhotoSaveEvent {
   item: {
@@ -60,7 +60,7 @@ function buildFoodPayload(event: PhotoSaveEvent): FoodCreatePayload {
 }
 
 /**
- * Extracted from PhotoResults.handleSave - builds the event from form state
+ * Extracted from FoodEntryForm.handleSave - builds the event from form state
  */
 interface FormState {
   name: string;
@@ -81,13 +81,12 @@ function buildSaveEvent(form: FormState, origConfidence: string = 'medium'): Pho
     cleanNutrients[k] = (typeof v === 'number' && !isNaN(v)) ? v : 0;
   }
 
+  // Matches FoodEntryForm.handleSave description logic:
+  // Description is the UNIT LABEL only — no quantity prefix.
+  // Quantity goes in `default_quantity`, not in the description.
   let desc = '';
   if (unit) {
-    desc = `1 ${unit}`;
-    const parts: string[] = [];
-    if (volMl) parts.push(`${volMl} mL`);
-    parts.push(`${weightG}g`);
-    desc += ` (${parts.join(', ')})`;
+    desc = `${unit} (${Math.round(weightG)}g)`;
   } else {
     desc = `${weightG}g`;
   }
@@ -106,7 +105,7 @@ function buildSaveEvent(form: FormState, origConfidence: string = 'medium'): Pho
 }
 
 
-describe('PhotoResults.handleSave → buildSaveEvent', () => {
+describe('FoodEntryForm.handleSave → buildSaveEvent', () => {
   it('Type 1: weight only (40g oats)', () => {
     const event = buildSaveEvent({
       name: 'Steel Cut Oats',
@@ -151,7 +150,7 @@ describe('PhotoResults.handleSave → buildSaveEvent', () => {
     expect(event.custom_unit).toBe('bar');
     expect(event.volume_ml).toBeNull();
     expect(event.item.serving_size_g).toBe(60);
-    expect(event.item.serving_description).toBe('1 bar (60g)');
+    expect(event.item.serving_description).toBe('bar (60g)');
   });
 
   it('Type 4: custom unit + volume (1 bottle, 325mL, 325g)', () => {
@@ -166,7 +165,7 @@ describe('PhotoResults.handleSave → buildSaveEvent', () => {
     expect(event.custom_unit).toBe('bottle');
     expect(event.volume_ml).toBe(325);
     expect(event.item.serving_size_g).toBe(325);
-    expect(event.item.serving_description).toBe('1 bottle (325 mL, 325g)');
+    expect(event.item.serving_description).toBe('bottle (325g)');
   });
 
   it('sanitizes undefined/NaN nutrients to 0', () => {
@@ -208,7 +207,7 @@ describe('PhotoResults.handleSave → buildSaveEvent', () => {
     });
 
     expect(event.custom_unit).toBe('bottle');
-    expect(event.item.serving_description).toBe('1 bottle (300g)');
+    expect(event.item.serving_description).toBe('bottle (300g)');
   });
 });
 
@@ -250,7 +249,7 @@ describe('AddFoodView.handlePhotoSave → buildFoodPayload', () => {
     expect(payload.unit).toBe('bar');
     expect(payload.custom_unit).toBe('bar');
     expect(payload.volume_ml).toBeUndefined();
-    expect(payload.serving_description).toBe('1 bar (60g)');
+    expect(payload.serving_description).toBe('bar (60g)');
   });
 
   it('Type 4: custom unit with volume', () => {
@@ -267,7 +266,7 @@ describe('AddFoodView.handlePhotoSave → buildFoodPayload', () => {
     expect(payload.custom_unit).toBe('bottle');
     expect(payload.volume_ml).toBe(325);
     expect(payload.serving_size).toBe(325);
-    expect(payload.serving_description).toBe('1 bottle (325 mL, 325g)');
+    expect(payload.serving_description).toBe('bottle (325g)');
   });
 
   it('handles missing nutrients gracefully', () => {

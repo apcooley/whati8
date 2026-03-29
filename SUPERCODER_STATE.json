@@ -1,15 +1,16 @@
 {
-  "project": "whati8-caddy-tls-proxy",
+  "project": "whati8-fix-manual-food-entry",
   "plan_file": "PLAN.md",
   "current_step": 1,
-  "total_steps": 3,
+  "total_steps": 4,
   "status": "in_progress",
   "planning_model": "anthropic/claude-opus-4-6",
   "coding_model": "anthropic/claude-sonnet-4-6",
   "review_model": "anthropic/claude-opus-4-6",
   "steps": [
-    { "id": 1, "title": "Write Caddyfile + tests", "status": "in_progress" },
-    { "id": 2, "title": "Deploy Caddyfile to system Caddy", "status": "pending" },
-    { "id": 3, "title": "Verify end-to-end + document migration", "status": "pending" }
+    { "id": 1, "title": "Rename PhotoResults → FoodEntryForm + empty mode", "status": "in_progress" },
+    { "id": 2, "title": "Wire manual mode into AddFoodView", "status": "pending" },
+    { "id": 3, "title": "Extract shared constants", "status": "pending" },
+    { "id": 4, "title": "Cleanup + verify build", "status": "pending" }
   ]
 }

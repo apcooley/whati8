@@ -221,9 +221,9 @@ class TestCalorieCalculation:
 class TestFrontendContract:
 
     def test_photo_results_dispatches_default_quantity(self):
-        """PhotoResults must include default_quantity in the save dispatch."""
+        """FoodEntryForm must include default_quantity in the save dispatch."""
         import re
-        with open("frontend/src/lib/components/PhotoResults.svelte") as f:
+        with open("frontend/src/lib/components/FoodEntryForm.svelte") as f:
             source = f.read()
 
         dispatch_match = re.search(r"dispatch\('save',\s*\{(.*?)\}\s*\)", source, re.DOTALL)
@@ -234,7 +234,7 @@ class TestFrontendContract:
 
     def test_photo_results_description_no_hardcoded_one(self):
         """Description should not hardcode '1' — use custom_qty."""
-        with open("frontend/src/lib/components/PhotoResults.svelte") as f:
+        with open("frontend/src/lib/components/FoodEntryForm.svelte") as f:
             source = f.read()
         assert "desc = `1 ${" not in source, \
             "Description should use custom_qty, not hardcode '1'"

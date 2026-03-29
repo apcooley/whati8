@@ -467,12 +467,19 @@ async def update_food(
         db.add(food_nutrient)
 
     await db.commit()
-    
-    # Refresh the food to get the updated nutrients
-    # Use joinedload for stronger relationship loading after commit
+
+    # Expire all cached objects so the refresh query loads fresh data
+    # (without this, selectinload may return stale FoodNutrient objects
+    # that don't have the nutrient relationship loaded)
+    db.expire_all()
+
+    # Refresh the food to get the updated nutrients and portions
     refresh_query = (
         select(Food)
-        .options(selectinload(Food.food_nutrients).joinedload(FoodNutrient.nutrient))
+        .options(
+            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+            selectinload(Food.portions),
+        )
         .where(Food.id == food_id)
     )
     refresh_result = await db.execute(refresh_query)

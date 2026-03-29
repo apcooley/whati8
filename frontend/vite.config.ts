@@ -6,13 +6,11 @@ export default defineConfig({
   plugins: [svelte()],
   server: {
     port: 5173,
+    allowedHosts: true,
     proxy: {
-      // Proxy API calls to FastAPI during development
-      '/auth': 'http://localhost:9428',
-      '/foods': 'http://localhost:9428',
-      '/logs': 'http://localhost:9428',
-      '/agent': 'http://localhost:9428',
-      '/profile': 'http://localhost:9428'
+      // Proxy all /api/v1/* and /health to FastAPI during development
+      '/api': 'http://localhost:9428',
+      '/health': 'http://localhost:9428'
     }
   },
   build: {

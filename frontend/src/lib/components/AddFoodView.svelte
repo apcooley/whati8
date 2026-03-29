@@ -7,10 +7,9 @@
   import { registerFood, updateUserFood, listProfileFoods } from '../api/profile';
   import { apiRequest } from '../api/client';
   import USDASearch from './USDASearch.svelte';
-  import ManualFoodForm from './ManualFoodForm.svelte';
   import RegisterSheet from './RegisterSheet.svelte';
   import PhotoCapture from './PhotoCapture.svelte';
-  import PhotoResults from './PhotoResults.svelte';
+  import FoodEntryForm from './FoodEntryForm.svelte';
   import RecipeBuilder from './RecipeBuilder.svelte';
   import RecipeListView from './RecipeListView.svelte';
   import type { RecognitionResult } from '../api/photo';
@@ -42,8 +41,8 @@
     photoResult = e.detail;
   }
 
-  async function handlePhotoSave(e: CustomEvent<{ item: any; custom_unit: string | null; default_quantity: number; weight_per_unit: number; volume_ml: number | null }>) {
-    const { item, custom_unit, default_quantity, weight_per_unit, volume_ml } = e.detail;
+  async function handleFoodSave(e: CustomEvent<{ item: any; custom_unit: string | null; default_quantity: number; weight_per_unit: number; volume_ml: number | null }>) {
+    const { item, custom_unit, default_quantity, volume_ml } = e.detail;
     try {
       const n = item.nutrients || {};
       const servingG = item.serving_size_g || 100;
@@ -161,25 +160,7 @@
     existingUserFoodId = null;
   }
 
-  function handleManualCreated(e: CustomEvent<any>) {
-    const food: FoodSearchResultItem = {
-      id: e.detail.id,
-      name: e.detail.name,
-      brand: e.detail.brand ?? null,
-      serving_size: e.detail.serving_size,
-      unit: e.detail.unit,
-      usda_fdc_id: null,
-      similarity: null,
-      calories: e.detail.calories,
-      protein: e.detail.protein,
-      carbs: e.detail.carbs,
-      fat: e.detail.fat,
-      portions: [],
-    };
-    mode = 'search';
-    selectedFood = food;
-    sheetVisible = true;
-  }
+
 
   async function handleRecipeSaved(e: CustomEvent<Recipe>) {
     const recipe = e.detail;
@@ -259,9 +240,9 @@
         </button>
         
         {#if photoResult}
-          <PhotoResults
+          <FoodEntryForm
             items={photoResult.items}
-            on:save={handlePhotoSave}
+            on:save={handleFoodSave}
             on:close={() => photoResult = null}
           />
         {/if}
@@ -272,7 +253,11 @@
       </div>
     {:else if mode === 'manual'}
       <div class="p-4">
-        <ManualFoodForm on:created={handleManualCreated} on:cancel={() => mode = 'search'} />
+        <FoodEntryForm
+          items={[]}
+          on:save={handleFoodSave}
+          on:close={() => mode = 'search'}
+        />
       </div>
     {:else if mode === 'recipe'}
       {#if recipeMode === 'list'}

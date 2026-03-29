@@ -2,7 +2,9 @@
   import { createEventDispatcher } from 'svelte';
   import type { RecognizedItem } from '../api/photo';
   import { parseFraction } from '../utils/parseFraction';
+  import { CORE_NUTRIENTS, NUTRIENT_LABELS, ALL_OPTIONAL, VOLUME_TO_ML, VOLUME_UNITS } from '../constants/nutrients';
 
+  /** Pass recognized items for photo mode, or omit/empty for manual entry. */
   export let items: RecognizedItem[] = [];
 
   const dispatch = createEventDispatcher<{
@@ -10,29 +12,20 @@
     close: void;
   }>();
 
-  const CORE_NUTRIENTS = ['calories', 'protein_g', 'fat_g', 'carbs_g', 'fiber_g'];
-  
-  const NUTRIENT_LABELS: Record<string, string> = {
-    calories: 'Calories', protein_g: 'Protein (g)', fat_g: 'Fat (g)',
-    saturated_fat_g: 'Sat. Fat (g)', trans_fat_g: 'Trans Fat (g)',
-    carbs_g: 'Carbs (g)', fiber_g: 'Fiber (g)', sugars_g: 'Sugars (g)',
-    added_sugars_g: 'Added Sugars (g)', cholesterol_mg: 'Cholesterol (mg)',
-    sodium_mg: 'Sodium (mg)', vitamin_d_mcg: 'Vitamin D (mcg)',
-    calcium_mg: 'Calcium (mg)', iron_mg: 'Iron (mg)', potassium_mg: 'Potassium (mg)',
-    vitamin_a_mcg: 'Vitamin A (mcg)', vitamin_c_mg: 'Vitamin C (mg)',
-    vitamin_e_mg: 'Vitamin E (mg)', vitamin_k_mcg: 'Vitamin K (mcg)',
-    thiamin_mg: 'Thiamin (mg)', riboflavin_mg: 'Riboflavin (mg)',
-    niacin_mg: 'Niacin (mg)', vitamin_b6_mg: 'Vitamin B6 (mg)',
-    folate_mcg: 'Folate (mcg)', vitamin_b12_mcg: 'Vitamin B12 (mcg)',
-    biotin_mcg: 'Biotin (mcg)', pantothenic_acid_mg: 'Pantothenic Acid (mg)',
-    phosphorus_mg: 'Phosphorus (mg)', iodine_mcg: 'Iodine (mcg)',
-    magnesium_mg: 'Magnesium (mg)', zinc_mg: 'Zinc (mg)',
-    selenium_mcg: 'Selenium (mcg)', copper_mg: 'Copper (mg)',
-    manganese_mg: 'Manganese (mg)', chromium_mcg: 'Chromium (mcg)',
-    molybdenum_mcg: 'Molybdenum (mcg)', chloride_mg: 'Chloride (mg)',
+  /** Default blank item for manual entry mode. */
+  const BLANK_ITEM: RecognizedItem = {
+    name: '',
+    serving_description: '',
+    serving_size_g: 100,
+    confidence: 'high',
+    nutrients: {},
   };
 
-  const ALL_OPTIONAL = Object.keys(NUTRIENT_LABELS).filter(k => !CORE_NUTRIENTS.includes(k));
+  /** True when no photo items provided — we're in manual entry mode. */
+  $: isManualMode = items.length === 0;
+
+  /** Use provided items or a single blank for manual mode. */
+  $: effectiveItems = items.length > 0 ? items : [BLANK_ITEM];
 
   let editItems: Array<{
     name: string;
@@ -46,8 +39,8 @@
     extraNutrients: string[];
   }> = [];
 
-  $: if (items.length > 0 && editItems.length !== items.length) {
-    editItems = items.map(item => {
+  $: if (effectiveItems.length > 0 && editItems.length !== effectiveItems.length) {
+    editItems = effectiveItems.map(item => {
       // Ensure core nutrients have defaults
       const nutrients = { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0, fiber_g: 0, ...item.nutrients };
       const extra = Object.keys(nutrients).filter(k => !CORE_NUTRIENTS.includes(k));
@@ -129,19 +122,8 @@
   }
 
   function handleSave(idx: number) {
-    const VOLUME_TO_ML: Record<string, number> = {
-      tsp: 4.929,
-      tbsp: 14.787,
-      'fl oz': 29.5735,
-      cup: 236.588,
-      pint: 473.176,
-      quart: 946.353,
-      L: 1000,
-      mL: 1,
-    };
-    
     const e = editItems[idx];
-    const weightG = parseFloat(e.weight_g) || items[idx].serving_size_g;
+    const weightG = parseFloat(e.weight_g) || effectiveItems[idx].serving_size_g;
     
     // Convert volume amount + unit to mL
     let volMl: number | null = null;
@@ -178,7 +160,7 @@
         name: e.name,
         serving_description: desc,
         serving_size_g: weightG,
-        confidence: items[idx]?.confidence || 'medium',
+        confidence: effectiveItems[idx]?.confidence || 'medium',
         nutrients: cleanNutrients,
       },
       custom_unit: unit,
@@ -192,7 +174,7 @@
 {#each editItems as item, idx}
 <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-3">
   <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-    <h3 class="font-semibold text-gray-900 text-sm">🍽️ Identified Food</h3>
+    <h3 class="font-semibold text-gray-900 text-sm">{isManualMode ? '✏️ Add Custom Food' : '🍽️ Identified Food'}</h3>
     <button type="button" on:click={() => dispatch('close')}
       class="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
   </div>
@@ -235,15 +217,7 @@
         <label class="block text-xs font-medium text-gray-500 mb-1">Volume unit</label>
         <select bind:value={item.volume_unit}
           class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm">
-          <option value="">-- none --</option>
-          <option value="tsp">tsp</option>
-          <option value="tbsp">tbsp</option>
-          <option value="fl oz">fl oz</option>
-          <option value="cup">cup</option>
-          <option value="pint">pint</option>
-          <option value="quart">quart</option>
-          <option value="L">L</option>
-          <option value="mL">mL</option>
+          {#each VOLUME_UNITS as vu}<option value={vu.value}>{vu.label}</option>{/each}
         </select>
       </div>
     </div>

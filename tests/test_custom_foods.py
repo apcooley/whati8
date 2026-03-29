@@ -233,7 +233,6 @@ async def test_list_user_foods_empty(authenticated_client: AsyncClient, seed_tes
     assert len(data) == 0
 
 
-@pytest.mark.skip(reason="SQLAlchemy async relationship loading issue - will implement in frontend tests")
 @pytest.mark.asyncio
 async def test_update_custom_food(
     authenticated_client: AsyncClient, db_session: AsyncSession, test_user: User, seed_test_data
@@ -300,7 +299,6 @@ async def test_update_nonexistent_food(authenticated_client: AsyncClient, seed_t
     assert response.status_code == 404
 
 
-@pytest.mark.skip(reason="Skipping update tests - async SQLAlchemy issue")
 @pytest.mark.asyncio
 async def test_update_other_user_food(
     authenticated_client: AsyncClient,

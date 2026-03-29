@@ -15,6 +15,10 @@ from whati8.config import settings
 
 _SKIP_METHODS = {"GET", "HEAD", "OPTIONS"}
 
+# Paths that need a larger body limit (e.g., file uploads)
+_LARGE_BODY_PATHS = {"/api/v1/photo/recognize"}
+_LARGE_BODY_MAX = 10 * 1024 * 1024  # 10MB
+
 _ERROR_BODY = json.dumps(
     {
         "error": {
@@ -37,6 +41,13 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
         if request.method in _SKIP_METHODS:
             return await call_next(request)
 
+        # Use larger limit for upload paths
+        max_size = (
+            _LARGE_BODY_MAX
+            if request.url.path in _LARGE_BODY_PATHS
+            else self.max_body_size
+        )
+
         # Fast-path: check Content-Length header first
         content_length = request.headers.get("content-length")
         if content_length is not None:
@@ -44,7 +55,7 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 size = int(content_length)
             except ValueError:
                 size = 0
-            if size > self.max_body_size:
+            if size > max_size:
                 return Response(
                     content=_ERROR_BODY,
                     status_code=413,
@@ -57,7 +68,7 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
             total = 0
             async for chunk in request.stream():
                 total += len(chunk)
-                if total > self.max_body_size:
+                if total > max_size:
                     return Response(
                         content=_ERROR_BODY,
                         status_code=413,
