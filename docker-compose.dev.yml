@@ -1,0 +1,28 @@
+# Dev overrides: hot reload, separate DB, different port
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  app:
+    build:
+      context: .
+      target: builder
+    ports:
+      - "9429:9428"
+    env_file: .env
+    environment:
+      - ENVIRONMENT=dev
+      - DATABASE_URL=postgresql://whati8:whati8@db:5432/whati8_dev
+    volumes:
+      - ./whati8:/app/whati8  # Hot reload
+    command: uv run python -m whati8 serve --reload
+    restart: "no"
+
+  db:
+    ports:
+      - "5433:5432"  # Exposed for debugging
+    environment:
+      - POSTGRES_DB=whati8_dev
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+
+volumes:
+  pgdata_dev:
