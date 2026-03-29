@@ -314,10 +314,61 @@ class RecipeService:
         total_weight = Decimal("0")
         nutrient_totals: dict[int, Decimal] = {}
 
+        from whati8.services.nutrient_calculator import (
+            NutrientInput as CalcInput,
+            compute_item_nutrients,
+            _is_energy,
+            _is_carb,
+        )
+
+        # ── Pass 1: determine a SINGLE global canonical ID for energy and carbs ──
+        # Different ingredients may have different "winning" energy/carb variants
+        # (e.g., USDA has Atwater General; custom food has plain Energy only).
+        # We pick ONE canonical ID per category for the whole recipe so the
+        # materialized food always has exactly one energy and one carb FoodNutrient.
+        #
+        # Energy priority (by name): Atwater General > Atwater Specific > plain
+        # Carb priority (by name): by summation > by difference > generic
+        global_energy_id: int | None = None
+        global_energy_priority: int = 99  # lower = better
+        global_carb_id: int | None = None
+        global_carb_priority: int = 99
+
+        for ingredient in ingredients:
+            food_nutrients_fresh = _fresh_nutrients.get(ingredient.food.id, ingredient.food.food_nutrients)
+            for fn in food_nutrients_fresh:
+                name = fn.nutrient.name
+                name_lower = name.lower()
+                if _is_energy(name):
+                    if "atwater general" in name_lower:
+                        priority = 0
+                    elif "atwater specific" in name_lower:
+                        priority = 1
+                    else:
+                        priority = 2
+                    if priority < global_energy_priority:
+                        global_energy_priority = priority
+                        global_energy_id = fn.nutrient_id
+                elif _is_carb(name):
+                    if "summation" in name_lower:
+                        priority = 0
+                    elif "difference" in name_lower:
+                        priority = 1
+                    else:
+                        priority = 2
+                    if priority < global_carb_priority:
+                        global_carb_priority = priority
+                        global_carb_id = fn.nutrient_id
+
+        # ── Pass 2: accumulate nutrients per ingredient ───────────────────────────
         for ingredient in ingredients:
             food = ingredient.food
             # Use fresh nutrients from DB, not potentially stale session cache
             food_nutrients_fresh = _fresh_nutrients.get(food.id, food.food_nutrients)
+
+            # Temporarily replace food_nutrients with fresh ones for the calculator
+            original_food_nutrients = food.food_nutrients
+            food.food_nutrients = food_nutrients_fresh
 
             # Calculate weight in grams
             quantity_in_grams = await RecipeService._get_quantity_in_grams(
@@ -325,77 +376,49 @@ class RecipeService:
             )
             total_weight += quantity_in_grams
 
-            # Calculate nutrients
-            # For energy/carbs: use coalesced values and classify by nutrient name.
-            # This avoids incomplete sums when mixing USDA (has Atwater energy variants)
-            # and custom foods (plain Energy only).
-            from whati8.services.daily_log_service import (
-                _coalesce_energy, _coalesce_carbs,
+            # Use NutrientCalculator to get coalesced friendly values and per-id amounts
+            calc_input = CalcInput(
+                food=food,
+                quantity=float(quantity_in_grams),
+                unit="grams",
             )
+            friendly, by_id = compute_item_nutrients(calc_input)
 
-            base = food.serving_size if food.created_by_user_id else Decimal("100")
-            per_gram_scale = Decimal("1") / base if base else Decimal("0")
+            # Restore original food_nutrients
+            food.food_nutrients = original_food_nutrients
 
-            # Classify nutrients by name into energy/carb sets for this ingredient
+            # Collect all energy/carb IDs for this ingredient (to skip in general loop)
             _energy_ids: set[int] = set()
             _carb_ids: set[int] = set()
-            _energy_canonical_id: int | None = None
-            _carb_canonical_id: int | None = None
-
             for fn in food_nutrients_fresh:
-                name_lower = fn.nutrient.name.lower()
-                if name_lower.startswith("energy") or "atwater" in name_lower:
+                name = fn.nutrient.name
+                if _is_energy(name):
                     _energy_ids.add(fn.nutrient_id)
-                    if fn.nutrient.name == "Energy":
-                        _energy_canonical_id = fn.nutrient_id
-                elif "carbohydrate" in name_lower:
+                elif _is_carb(name):
                     _carb_ids.add(fn.nutrient_id)
-                    if fn.nutrient.name == "Carbohydrate, by difference":
-                        _carb_canonical_id = fn.nutrient_id
 
-            # Fallback canonical IDs
-            if _energy_canonical_id is None and _energy_ids:
-                _energy_canonical_id = min(_energy_ids)
-            if _carb_canonical_id is None and _carb_ids:
-                _carb_canonical_id = min(_carb_ids)
+            # Accumulate coalesced energy under GLOBAL canonical ID
+            coalesced_energy = friendly["calories"]
+            if coalesced_energy and global_energy_id is not None:
+                if global_energy_id not in nutrient_totals:
+                    nutrient_totals[global_energy_id] = Decimal("0")
+                nutrient_totals[global_energy_id] += Decimal(str(coalesced_energy))
 
-            # Coalesced energy
-            coalesced_energy = _coalesce_energy(food_nutrients_fresh, per_gram_scale)
-            if coalesced_energy and _energy_canonical_id is not None:
-                energy_for_ingredient = Decimal(str(coalesced_energy)) * quantity_in_grams
-                if _energy_canonical_id not in nutrient_totals:
-                    nutrient_totals[_energy_canonical_id] = Decimal("0")
-                nutrient_totals[_energy_canonical_id] += energy_for_ingredient
+            # Accumulate coalesced carbs under GLOBAL canonical ID
+            coalesced_carbs = friendly["carbs"]
+            if coalesced_carbs and global_carb_id is not None:
+                if global_carb_id not in nutrient_totals:
+                    nutrient_totals[global_carb_id] = Decimal("0")
+                nutrient_totals[global_carb_id] += Decimal(str(coalesced_carbs))
 
-            # Coalesced carbs
-            coalesced_carbs = _coalesce_carbs(food_nutrients_fresh, per_gram_scale)
-            if coalesced_carbs and _carb_canonical_id is not None:
-                carbs_for_ingredient = Decimal(str(coalesced_carbs)) * quantity_in_grams
-                if _carb_canonical_id not in nutrient_totals:
-                    nutrient_totals[_carb_canonical_id] = Decimal("0")
-                nutrient_totals[_carb_canonical_id] += carbs_for_ingredient
-
-            # Skip set: all energy + carb IDs (by name classification, not hardcoded)
+            # Accumulate all other (non-energy, non-carb) nutrients from by_id
             skip_ids = _energy_ids | _carb_ids
-
-            for food_nutrient in food_nutrients_fresh:
-                nutrient_id = food_nutrient.nutrient_id
-
-                # Skip energy and carb nutrients — handled via coalesce above
+            for nutrient_id, amount in by_id.items():
                 if nutrient_id in skip_ids:
                     continue
-
-                # Get nutrient per gram
-                if food.created_by_user_id:
-                    nutrient_per_gram = food_nutrient.amount_per_serving / food.serving_size
-                else:
-                    nutrient_per_gram = food_nutrient.amount_per_serving / Decimal("100")
-
-                nutrient_amount = nutrient_per_gram * quantity_in_grams
-
                 if nutrient_id not in nutrient_totals:
                     nutrient_totals[nutrient_id] = Decimal("0")
-                nutrient_totals[nutrient_id] += nutrient_amount
+                nutrient_totals[nutrient_id] += Decimal(str(amount))
 
         # Create Food entry
         serving_size = total_weight / recipe.servings

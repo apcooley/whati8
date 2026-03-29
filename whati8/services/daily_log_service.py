@@ -14,123 +14,40 @@ from whati8.services.nutrient_calculator import NutrientCalculator, NutrientInpu
 logger = get_logger(__name__)
 
 
-# Legacy helpers — still imported by recipe_service.py.
-# TODO: Remove once recipe_service.py is migrated to NutrientCalculator (Step 4).
-
 def _portion_scale(log, food):
     """Calculate scale factor for nutrient values.
-    
+
     USDA foods: amount_per_serving is per 100g.
     Custom foods (created_by_user_id set): amount_per_serving is per serving_size.
-    
+
     Returns multiplier so: amount_per_serving * scale = actual nutrient amount.
     """
     import re
     from decimal import Decimal
-    
+
     is_custom = bool(getattr(food, 'created_by_user_id', None))
     base = food.serving_size if is_custom and food.serving_size else Decimal(100)
-    
+
     if not log.unit or not hasattr(food, 'portions'):
         return log.quantity
-    
+
     # If unit is "grams" or "g", quantity IS the gram weight
     if log.unit.lower() in ("grams", "g"):
         return log.quantity / base
-    
+
     # If unit matches the food's native unit (e.g. "oz" for custom food with unit="oz")
     if is_custom and log.unit.lower() == (food.unit or '').lower():
         return log.quantity  # 1 unit = 1 serving
-    
+
     # Try to find matching portion from USDA portions
     for p in food.portions:
         desc = p.portion_description or p.modifier or p.unit_name or ""
         clean_desc = re.sub(r"^[\d.]+ undetermined ", "", desc)
-        norm = lambda s: re.sub(r'(\d+)\.0g\)', lambda m: m.group(1) + 'g)', s)
+        norm = lambda s: re.sub(r'(\d+)\.0g\)', lambda m: m.group(1) + 'g)', s)  # noqa: E731
         if norm(clean_desc) == norm(log.unit):
             return log.quantity * p.gram_weight / base
-    
+
     return log.quantity
-
-
-# Energy nutrient IDs that should all be treated as "Calories"
-ENERGY_NUTRIENT_IDS = {39, 199, 200}
-
-# Carbohydrate nutrient IDs
-CARB_NUTRIENT_IDS = {81, 107}  # by difference, by summation
-
-
-def _coalesce_energy(food_nutrients, portion_scale_factor) -> float | None:
-    """Apply energy coalesce: Atwater General (199) > Atwater Specific (200) > Plain Energy (39).
-    
-    Also matches by name for environments where IDs differ (e.g., test databases).
-    """
-    energy_values = {}
-    generic_energy_value = None
-    
-    for fn in food_nutrients:
-        scaled_value = float(fn.amount_per_serving * portion_scale_factor)
-        
-        # Match by ID (production database)
-        if fn.nutrient_id in ENERGY_NUTRIENT_IDS:
-            energy_values[fn.nutrient_id] = scaled_value
-        # Match by name (test databases or other schemas)
-        elif fn.nutrient.name.lower().startswith("energy"):
-            # Distinguish between specific Atwater factors and generic Energy
-            name_lower = fn.nutrient.name.lower()
-            if "atwater general" in name_lower:
-                energy_values[199] = scaled_value
-            elif "atwater specific" in name_lower:
-                energy_values[200] = scaled_value
-            else:
-                # Generic "Energy" - use as fallback
-                generic_energy_value = scaled_value
-    
-    # Priority: Atwater General (199) > Atwater Specific (200) > Plain Energy (39) > Generic Energy by name
-    if 199 in energy_values:
-        return energy_values[199]
-    elif 200 in energy_values:
-        return energy_values[200]
-    elif 39 in energy_values:
-        return energy_values[39]
-    elif generic_energy_value is not None:
-        return generic_energy_value
-    return None
-
-
-def _coalesce_carbs(food_nutrients, portion_scale_factor) -> float | None:
-    """Apply carbs coalesce: by_summation (107) > MAX(by_difference (81), 0).
-    
-    Also matches by name for environments where IDs differ (e.g., test databases).
-    """
-    carb_values = {}
-    generic_carb_value = None
-    
-    for fn in food_nutrients:
-        scaled_value = float(fn.amount_per_serving * portion_scale_factor)
-        
-        # Match by ID (production database)
-        if fn.nutrient_id in CARB_NUTRIENT_IDS:
-            carb_values[fn.nutrient_id] = scaled_value
-        # Match by name (test databases or other schemas)
-        elif "carbohydrate" in fn.nutrient.name.lower():
-            name_lower = fn.nutrient.name.lower()
-            if "summation" in name_lower:
-                carb_values[107] = scaled_value
-            elif "difference" in name_lower:
-                carb_values[81] = scaled_value
-            else:
-                # Generic "Carbohydrate" - use as fallback
-                generic_carb_value = scaled_value
-    
-    # Priority: summation (107) > clamped difference (81) > generic carbohydrate by name
-    if 107 in carb_values:
-        return carb_values[107]
-    elif 81 in carb_values:
-        return max(carb_values[81], 0)  # Clamp negative to 0
-    elif generic_carb_value is not None:
-        return max(generic_carb_value, 0)  # Clamp negative to 0
-    return None
 
 
 async def compute_food_summary(
