@@ -589,12 +589,13 @@ async def get_food_summary(
     """
     from whati8.services.daily_log_service import compute_food_summary
 
-    # Load food with nutrients
+    # Load food with nutrients and portions (NutrientCalculator needs both)
     result = await db.execute(
         select(Food)
         .where(Food.id == food_id)
         .options(
             selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+            selectinload(Food.portions),
         )
     )
     food = result.scalar_one_or_none()

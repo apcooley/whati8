@@ -83,10 +83,13 @@ async def _ensure_defaults(db: AsyncSession, user_id: int) -> list[UserSummaryNu
         nutrient = None
         for n in nutrients:
             if usda_name == "energy":
-                # Use kJ Energy (id=39) — most foods have it; we convert to kcal at display
+                # Prefer kJ Energy (id=39 in production) — most foods have it.
+                # Fall back to kcal Energy for test databases or other schemas.
                 if n.name.lower() == "energy" and n.unit == "kJ":
                     nutrient = n
                     break
+                elif n.name.lower() == "energy" and n.unit == "kcal":
+                    nutrient = n  # keep looking for kJ version, but accept kcal as fallback
             elif n.name.lower() == usda_name:
                 nutrient = n
                 break

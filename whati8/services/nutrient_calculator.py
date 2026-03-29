@@ -29,7 +29,7 @@ def _is_carb(name: str) -> bool:
 
 # Maps friendly keys to name-matching functions.
 # "calories" and "carbs" are listed here for completeness but are handled
-# separately via coalescing logic in _compute_item_nutrients (they need
+# separately via coalescing logic in compute_item_nutrients (they need
 # priority-based selection, not simple summing). Other keys use the matcher
 # directly to sum matching nutrients.
 FRIENDLY_MAP: dict[str, Callable[[str], bool]] = {
@@ -75,17 +75,27 @@ def _eval_formula(formula: str, values: dict[str, float]) -> float:
 
 def _get_gram_weight(food: Any, quantity: float, unit: str) -> float:
     """Resolve quantity + unit to grams."""
+    import re
+
     unit_lower = unit.lower().strip()
 
     if unit_lower in ("grams", "g"):
         return float(quantity)
+
+    # Strip leading quantity prefix from unit for matching
+    # e.g., "1 bottle (325g)" → "bottle (325g)"
+    unit_stripped = re.sub(r'^[\d.]+\s+', '', unit_lower)
 
     # Named portion lookup
     for portion in food.portions or []:
         portion_unit = (portion.unit_name or "").lower().strip()
         portion_desc = (portion.portion_description or "").lower().strip()
         modifier = (portion.modifier or "").lower().strip()
-        if unit_lower in (portion_unit, portion_desc, modifier):
+        # Also strip leading quantity prefix from portion descriptions
+        desc_stripped = re.sub(r'^[\d.]+\s+', '', portion_desc)
+
+        candidates = {portion_unit, portion_desc, modifier, desc_stripped}
+        if unit_lower in candidates or unit_stripped in candidates:
             # gram_weight may cover `amount` units (e.g., "2 cookies = 30g").
             # Per-unit weight = gram_weight / amount.
             per_unit = float(portion.gram_weight) / float(portion.amount or 1)
@@ -110,7 +120,7 @@ def _scale_factor(food: Any, gram_weight: float) -> float:
 # ── Per-item computation ───────────────────────────────────────────────────────
 
 
-def _compute_item_nutrients(
+def compute_item_nutrients(
     item: NutrientInput,
 ) -> tuple[dict[str, float], dict[int, float]]:
     """Return (friendly_values, {nutrient_id: scaled_amount}) for one item."""
@@ -204,9 +214,28 @@ class NutrientCalculator:
         item_by_ids: list[dict[int, float]] = []
 
         for item in items:
-            friendly, by_id = _compute_item_nutrients(item)
+            friendly, by_id = compute_item_nutrients(item)
             item_friendlies.append(friendly)
             item_by_ids.append(by_id)
+
+        return NutrientCalculator.compute_summary_from_precomputed(
+            item_friendlies, item_by_ids, config, formula_mode
+        )
+
+    @staticmethod
+    def compute_summary_from_precomputed(
+        item_friendlies: list[dict[str, float]],
+        item_by_ids: list[dict[int, float]],
+        config: list,
+        formula_mode: str = "per_item",
+    ) -> list[dict]:
+        """Apply config to pre-computed nutrient data.
+
+        Use when you've already called compute_item_nutrients() and want to
+        avoid recomputing. Same config application as compute_summary().
+        """
+        if not config:
+            return []
 
         # Pre-compute summed friendly values for total mode
         total_friendly: dict[str, float] = {k: 0.0 for k in FRIENDLY_MAP}

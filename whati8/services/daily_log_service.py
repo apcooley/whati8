@@ -9,10 +9,13 @@ from sqlalchemy.orm import selectinload
 from whati8.logging_config import get_logger
 from whati8.models import Food, FoodLog, FoodNutrient, Meal, UserFood, UserGoal
 from whati8.schemas.daily_log import QuickLogCreate
+from whati8.services.nutrient_calculator import NutrientCalculator, NutrientInput
 
 logger = get_logger(__name__)
 
 
+# Legacy helpers — still imported by recipe_service.py.
+# TODO: Remove once recipe_service.py is migrated to NutrientCalculator (Step 4).
 
 def _portion_scale(log, food):
     """Calculate scale factor for nutrient values.
@@ -141,67 +144,10 @@ async def compute_food_summary(
     This is the single source of truth for nutrient display anywhere in the app.
     """
     from whati8.api.routers.summary_config import _ensure_defaults
-    from whati8.services.formula_engine import evaluate_formula
 
     config_items = await _ensure_defaults(db, user_id)
-    if not config_items:
-        return []
-
-    # Scale factor: quantity_grams / base
-    from decimal import Decimal
-    is_custom = bool(getattr(food, 'created_by_user_id', None))
-    base = float(food.serving_size) if is_custom and food.serving_size else 100.0
-    scale = quantity_grams / base if base > 0 else 0
-
-    # Extract core nutrients using coalesce strategies
-    calories = _coalesce_energy(food.food_nutrients, Decimal(str(scale)))
-    carbs = _coalesce_carbs(food.food_nutrients, Decimal(str(scale)))
-
-    protein = None
-    fat = None
-    fiber = None
-    for fn in food.food_nutrients:
-        scaled = float(fn.amount_per_serving * Decimal(str(scale)))
-        name_lower = fn.nutrient.name.lower()
-        if name_lower == "protein":
-            protein = scaled
-        elif name_lower in ["total lipid (fat)", "fat"]:
-            fat = scaled
-        elif name_lower in ["fiber, total dietary", "fiber"]:
-            fiber = scaled
-
-    friendly = {
-        "calories": calories or 0,
-        "protein": protein or 0,
-        "carbs": carbs or 0,
-        "fat": fat or 0,
-        "fiber": fiber or 0,
-    }
-
-    summary = []
-    for cfg in config_items:
-        if cfg.formula:
-            val = evaluate_formula(cfg.formula, friendly) or 0
-        elif cfg.nutrient_id:
-            if cfg.nutrient_id in ENERGY_NUTRIENT_IDS:
-                val = _coalesce_energy(food.food_nutrients, Decimal(str(scale))) or 0
-            elif cfg.nutrient_id in CARB_NUTRIENT_IDS:
-                val = _coalesce_carbs(food.food_nutrients, Decimal(str(scale))) or 0
-            else:
-                val = 0
-                for fn in food.food_nutrients:
-                    if fn.nutrient_id == cfg.nutrient_id:
-                        val = float(fn.amount_per_serving * Decimal(str(scale)))
-                        break
-        else:
-            val = 0
-        summary.append({
-            "name": cfg.display_name,
-            "value": round(val, 1),
-            "unit": cfg.display_unit,
-        })
-
-    return summary
+    item = NutrientInput(food=food, quantity=quantity_grams, unit="grams")
+    return NutrientCalculator.compute_summary([item], config_items, formula_mode="per_item")
 
 
 class DailyLogService:
@@ -337,255 +283,78 @@ class DailyLogService:
         )
         all_meals = list(meals_result.scalars().all())
 
-        # Group logs by meal
         # Load user summary config early (needed for per-log summary)
         from whati8.api.routers.summary_config import _ensure_defaults
-        from whati8.services.formula_engine import evaluate_formula
         config_items = await _ensure_defaults(db, user_id)
 
+        def _format_log(log) -> dict:
+            """Format a single log entry using NutrientCalculator for all nutrient fields."""
+            item = NutrientInput(food=log.food, quantity=float(log.quantity), unit=log.unit or "grams")
+            # Compute nutrients once, use for both convenience fields and summary
+            from whati8.services.nutrient_calculator import compute_item_nutrients
+            friendly, by_id = compute_item_nutrients(item)
+            log_summary = NutrientCalculator.compute_summary_from_precomputed(
+                [friendly], [by_id], config_items, formula_mode="per_item"
+            )
+
+            return {
+                "id": log.id,
+                "food_id": log.food_id,
+                "food_name": log.food.name,
+                "quantity": float(log.quantity),
+                "unit": log.unit or log.food.unit,
+                "logged_at": log.logged_at,
+                "calories": friendly.get("calories"),
+                "protein": friendly.get("protein"),
+                "carbs": friendly.get("carbs"),
+                "fat": friendly.get("fat"),
+                "fiber": friendly.get("fiber"),
+                "summary_nutrients": log_summary,
+            }
+
+        # Group logs by meal
         meal_groups = []
         for meal in all_meals:
             meal_logs = [log for log in logs if log.meal_id == meal.id]
-
-            # Convert logs to response format with computed nutrients
-            formatted_logs = []
-            for log in meal_logs:
-                # Compute key nutrients for display
-                portion_scale_factor = _portion_scale(log, log.food)
-                
-                # Apply coalesce strategies
-                calories = _coalesce_energy(log.food.food_nutrients, portion_scale_factor)
-                carbs = _coalesce_carbs(log.food.food_nutrients, portion_scale_factor)
-                
-                protein = None
-                fat = None
-                fiber = None
-
-                for fn in log.food.food_nutrients:
-                    # Scale by quantity
-                    scaled_value = float(fn.amount_per_serving * portion_scale_factor)
-
-                    if fn.nutrient.name.lower() == "protein":
-                        protein = scaled_value
-                    elif fn.nutrient.name.lower() in ["total lipid (fat)", "fat"]:
-                        fat = scaled_value
-                    elif fn.nutrient.name.lower() in ["fiber, total dietary", "fiber"]:
-                        fiber = scaled_value
-
-                # Build friendly values for formula evaluation
-                friendly = {
-                    "calories": calories or 0,
-                    "protein": protein or 0,
-                    "carbs": carbs or 0,
-                    "fat": fat or 0,
-                    "fiber": fiber or 0,
-                }
-
-                # Compute per-log summary nutrients matching user config
-                log_summary = []
-                for cfg in config_items:
-                    if cfg.formula:
-                        val = evaluate_formula(cfg.formula, friendly) or 0
-                    elif cfg.nutrient_id:
-                        # Apply coalesce strategies for special nutrient IDs
-                        if cfg.nutrient_id in ENERGY_NUTRIENT_IDS:
-                            val = _coalesce_energy(log.food.food_nutrients, portion_scale_factor) or 0
-                        elif cfg.nutrient_id in CARB_NUTRIENT_IDS:
-                            val = _coalesce_carbs(log.food.food_nutrients, portion_scale_factor) or 0
-                        else:
-                            # Find the matching nutrient total for this log
-                            val = 0
-                            for fn2 in log.food.food_nutrients:
-                                if fn2.nutrient_id == cfg.nutrient_id:
-                                    sv = float(fn2.amount_per_serving * portion_scale_factor)
-                                    val = sv
-                                    break
-                    else:
-                        val = 0
-                    log_summary.append({
-                        "name": cfg.display_name,
-                        "value": round(val, 1),
-                        "unit": cfg.display_unit,
-                    })
-
-                formatted_logs.append({
-                    "id": log.id,
-                    "food_id": log.food_id,
-                    "food_name": log.food.name,
-                    "quantity": float(log.quantity),
-                    "unit": log.unit or log.food.unit,
-                    "logged_at": log.logged_at,
-                    "calories": calories,
-                    "protein": protein,
-                    "carbs": carbs,
-                    "fat": fat,
-                    "fiber": fiber,
-                    "summary_nutrients": log_summary,
-                })
-
-            if meal_logs:  # Only include meals that have logs
+            if meal_logs:
                 meal_groups.append({
                     "meal": {
                         "id": meal.id,
                         "name": meal.name,
                         "display_order": meal.display_order,
                     },
-                    "logs": formatted_logs,
+                    "logs": [_format_log(log) for log in meal_logs],
                 })
 
         # Add ungrouped logs (null meal_id)
         ungrouped_logs = [log for log in logs if log.meal_id is None]
         if ungrouped_logs:
-            formatted_ungrouped = []
-            for log in ungrouped_logs:
-                portion_scale_factor = _portion_scale(log, log.food)
-                
-                # Apply coalesce strategies
-                calories = _coalesce_energy(log.food.food_nutrients, portion_scale_factor)
-                carbs = _coalesce_carbs(log.food.food_nutrients, portion_scale_factor)
-                
-                protein = fat = fiber = None
-                for fn in log.food.food_nutrients:
-                    scaled_value = float(fn.amount_per_serving * portion_scale_factor)
-                    if fn.nutrient.name.lower() == "protein":
-                        protein = scaled_value
-                    elif fn.nutrient.name.lower() in ["total lipid (fat)", "fat"]:
-                        fat = scaled_value
-                    elif fn.nutrient.name.lower() in ["fiber, total dietary", "fiber"]:
-                        fiber = scaled_value
-
-                friendly = {"calories": calories or 0, "protein": protein or 0, "carbs": carbs or 0, "fat": fat or 0, "fiber": fiber or 0}
-                log_summary = []
-                for cfg in config_items:
-                    if cfg.formula:
-                        val = evaluate_formula(cfg.formula, friendly) or 0
-                    elif cfg.nutrient_id:
-                        # Apply coalesce strategies for special nutrient IDs
-                        if cfg.nutrient_id in ENERGY_NUTRIENT_IDS:
-                            val = _coalesce_energy(log.food.food_nutrients, portion_scale_factor) or 0
-                        elif cfg.nutrient_id in CARB_NUTRIENT_IDS:
-                            val = _coalesce_carbs(log.food.food_nutrients, portion_scale_factor) or 0
-                        else:
-                            val = 0
-                            for fn2 in log.food.food_nutrients:
-                                if fn2.nutrient_id == cfg.nutrient_id:
-                                    sv = float(fn2.amount_per_serving * portion_scale_factor)
-                                    val = sv
-                                    break
-                    else:
-                        val = 0
-                    log_summary.append({"name": cfg.display_name, "value": round(val, 1), "unit": cfg.display_unit})
-
-                formatted_ungrouped.append({
-                    "id": log.id,
-                    "food_id": log.food_id,
-                    "food_name": log.food.name,
-                    "quantity": float(log.quantity),
-                    "unit": log.unit or log.food.unit,
-                    "logged_at": log.logged_at,
-                    "calories": calories,
-                    "protein": protein,
-                    "carbs": carbs,
-                    "fat": fat,
-                    "fiber": fiber,
-                    "summary_nutrients": log_summary,
-                })
             meal_groups.append({
                 "meal": {
                     "id": 0,
                     "name": "Other",
                     "display_order": 999,
                 },
-                "logs": formatted_ungrouped,
+                "logs": [_format_log(log) for log in ungrouped_logs],
             })
 
-        # Calculate daily nutrient totals with friendly names
-        from whati8.services.formula_engine import get_friendly_name, FRIENDLY_TO_USDA
-        # Build set of nutrient IDs we care about from user's summary config
-        # Get user's summary config (auto-create defaults if empty)
-        from whati8.api.routers.summary_config import _ensure_defaults
-        config_items = await _ensure_defaults(db, user_id)
-        # Nutrient IDs from user config (for standard nutrients)
-        config_nutrient_ids = {c.nutrient_id for c in config_items if c.nutrient_id}
-        # If any energy nutrient is in config, include all energy variants
-        if config_nutrient_ids & ENERGY_NUTRIENT_IDS:
-            config_nutrient_ids |= ENERGY_NUTRIENT_IDS
-        # If any formulas exist, don't filter — we need all nutrients for formula evaluation
-        has_formulas = any(c.formula for c in config_items)
+        # Calculate daily nutrient totals using NutrientCalculator
+        all_items = [
+            NutrientInput(food=log.food, quantity=float(log.quantity), unit=log.unit or "grams")
+            for log in logs
+        ]
+        nc_results = NutrientCalculator.compute_summary(all_items, config_items, formula_mode="per_item")
 
-        nutrient_totals = {}
-        for log in logs:
-            for fn in log.food.food_nutrients:
-                nutrient_id = fn.nutrient_id
-                if config_nutrient_ids and not has_formulas and nutrient_id not in config_nutrient_ids:
-                    continue
-                nutrient_id = fn.nutrient_id
-                scaled_value = float(fn.amount_per_serving * _portion_scale(log, log.food))
-                friendly_name, friendly_unit = get_friendly_name(fn.nutrient.name)
-
-                if nutrient_id not in nutrient_totals:
-                    nutrient_totals[nutrient_id] = {
-                        "nutrient_id": nutrient_id,
-                        "name": friendly_name,
-                        "unit": friendly_unit,
-                        "raw_unit": fn.nutrient.unit,
-                        "value": 0.0,
-                        "target": None,
-                    }
-
-                nutrient_totals[nutrient_id]["value"] += scaled_value
-
-        # Build summary using user's configured metrics
-        from whati8.services.formula_engine import evaluate_formula
-        # config_items already loaded above for nutrient ID filtering
-
-        # If no config, use all computed nutrient_totals as fallback
-        if not config_items:
-            summary_nutrients = list(nutrient_totals.values())
-        else:
-            # Build friendly-name lookup for formulas
-            friendly_values: dict[str, float] = {}
-            for nid, data in nutrient_totals.items():
-                # Map back to friendly keys
-                for friendly_key, usda_name in FRIENDLY_TO_USDA.items():
-                    fn, _ = get_friendly_name(usda_name)
-                    if data["name"] == fn:
-                        val = data["value"]
-                        friendly_values[friendly_key] = val
-
-            # Pre-compute per-log friendly values for formula metrics
-            # Formulas are nonlinear (rounding), so f(a)+f(b) != f(a+b)
-            # We must evaluate per-log and sum the results
-            per_log_friendly: list[dict[str, float]] = []
-            for log in logs:
-                log_vals: dict[str, float] = {}
-                for fn in log.food.food_nutrients:
-                    scaled = float(fn.amount_per_serving * _portion_scale(log, log.food))
-                    fn_friendly, _ = get_friendly_name(fn.nutrient.name)
-                    for fkey, usda_name in FRIENDLY_TO_USDA.items():
-                        fn2, _ = get_friendly_name(usda_name)
-                        if fn_friendly == fn2:
-                            log_vals[fkey] = log_vals.get(fkey, 0) + scaled
-                per_log_friendly.append(log_vals)
-
-            summary_nutrients = []
-            for item in config_items:
-                if item.formula:
-                    # Sum per-log formula evaluations (nonlinear formulas like WW points)
-                    value = sum(evaluate_formula(item.formula, lv) or 0.0 for lv in per_log_friendly)
-                elif item.nutrient_id:
-                    # Standard nutrient — look up in totals
-                    value = nutrient_totals.get(item.nutrient_id, {}).get("value", 0.0)
-                else:
-                    value = 0.0
-
-                summary_nutrients.append({
-                    "nutrient_id": item.nutrient_id or 0,
-                    "name": item.display_name or "Unknown",
-                    "unit": item.display_unit or "",
-                    "value": round(value, 1),
-                    "target": None,
-                })
+        # Build summary_nutrients in expected response format (with nutrient_id and target)
+        summary_nutrients = []
+        for cfg, result_item in zip(config_items, nc_results):
+            summary_nutrients.append({
+                "nutrient_id": cfg.nutrient_id or 0,
+                "name": result_item["name"],
+                "unit": result_item["unit"],
+                "value": round(result_item["value"], 1),
+                "target": None,
+            })
 
         # Get user goals (for targets)
         goals_result = await db.execute(
