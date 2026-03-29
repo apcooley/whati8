@@ -41,9 +41,14 @@ class Settings(BaseSettings):
         description="JWT signing algorithm",
     )
     jwt_expiration_hours: int = Field(
-        default=24,
+        default=1,
         ge=1,
         description="JWT token expiration time in hours",
+    )
+    refresh_token_expiration_days: int = Field(
+        default=30,
+        ge=1,
+        description="Refresh token expiration time in days",
     )
 
     # AI/LLM Service

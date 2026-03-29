@@ -12,6 +12,7 @@ from whati8.models.food_portion import FoodPortion
 from whati8.models.meal import Meal
 from whati8.models.nutrient import Nutrient
 from whati8.models.recipe import Recipe, RecipeIngredient, RecipeVersion
+from whati8.models.refresh_token import RefreshToken
 from whati8.models.user import User
 from whati8.models.user_food import UserFood
 from whati8.models.user_goal import UserGoal
@@ -29,6 +30,7 @@ __all__ = [
     "Recipe",
     "RecipeIngredient",
     "RecipeVersion",
+    "RefreshToken",
     "UserFood",
     "UserGoal",
     "UserSummaryNutrient",

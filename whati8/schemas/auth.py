@@ -43,6 +43,19 @@ class Token(BaseORMModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int  # Seconds until expiration
+    refresh_token: str = ""
+
+
+class RefreshRequest(BaseRequestModel):
+    """Schema for refresh token request."""
+
+    refresh_token: str
+
+
+class LogoutRequest(BaseRequestModel):
+    """Schema for logout request."""
+
+    refresh_token: str
 
 
 class TokenPayload(BaseORMModel):
