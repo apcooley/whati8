@@ -20,7 +20,7 @@ from whati8.services.daily_log_service import DailyLogService
 
 DB_URL = settings.get_async_database_url()
 TEST_USER_ID = 2
-SERVER = "http://192.168.1.11:9428"
+SERVER = "http://192.168.1.11:9428/api/v1"
 
 
 def _db(sql, params=None):

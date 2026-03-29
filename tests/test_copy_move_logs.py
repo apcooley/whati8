@@ -10,7 +10,7 @@ import pytest
 import psycopg2
 import httpx
 
-SERVER = "http://192.168.1.11:9428"
+SERVER = "http://192.168.1.11:9428/api/v1"
 TEST_USER_ID = 2  # testbot
 
 
