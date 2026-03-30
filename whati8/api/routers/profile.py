@@ -168,7 +168,7 @@ async def update_user_food(
             db, current_user.id, user_food_id, update_data
         )
         return user_food
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(status_code=404, detail="Resource not found")
 
 
@@ -188,5 +188,5 @@ async def delete_user_food(
     """
     try:
         await UserFoodService.delete_user_food(db, current_user.id, user_food_id)
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(status_code=404, detail="Resource not found")

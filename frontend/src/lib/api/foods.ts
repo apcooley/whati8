@@ -15,3 +15,18 @@ export interface SummaryNutrient {
 export async function getFoodSummary(foodId: number, quantity: number): Promise<SummaryNutrient[]> {
   return apiRequest<SummaryNutrient[]>(`/foods/${foodId}/summary?quantity=${quantity}`);
 }
+
+export interface BatchSummaryRequest {
+  food_id: number;
+  quantity: number;
+}
+
+export async function getBatchFoodSummary(
+  items: BatchSummaryRequest[]
+): Promise<Record<string, SummaryNutrient[]>> {
+  return apiRequest<Record<string, SummaryNutrient[]>>('/foods/batch-summary', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}

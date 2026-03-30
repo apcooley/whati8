@@ -248,7 +248,7 @@ async def update_recipe(
             servings=update_data.servings,
             serving_unit=update_data.serving_unit,
         )
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(status_code=404, detail="Resource not found")
 
     # Reload with relationships

@@ -1,174 +1,158 @@
 # Deployment Guide
 
-## Quick Start (Docker)
+This document describes the deployment workflow for whati8, covering local development, staging, and production environments.
 
+---
+
+## Environment Overview
+
+| Environment | App Name         | URL                            | Auto-stop  | Registration | Docs  |
+|-------------|------------------|--------------------------------|------------|--------------|-------|
+| Development | (local)          | http://localhost:9428          | N/A        | Enabled      | On    |
+| Staging     | whati8-staging   | https://whati8-staging.fly.dev | `suspend`  | Enabled      | On    |
+| Production  | whati8-app       | https://whati8.app             | `off`      | Disabled     | Off   |
+
+---
+
+## Local Development Setup
+
+1. **Clone the repo:**
+   ```bash
+   git clone https://github.com/aaroncooley/whati8.git
+   cd whati8
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   uv sync
+   ```
+
+3. **Set environment variables:**
+   Copy `.env.example` to `.env` and fill in values:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Run the development server:**
+   ```bash
+   uv run uvicorn whati8.main:app --reload --port 9428
+   ```
+
+5. **Run tests:**
+   ```bash
+   uv run pytest
+   ```
+
+---
+
+## Deploying to Staging
+
+Staging is used for testing feature branches before merging to `main`. It mirrors production configuration but with registration and docs enabled.
+
+**Configuration:** `fly.staging.toml`
+
+### Automatic (via script):
 ```bash
-# 1. Copy environment file
-cp .env.example .env
-# Edit .env with your secrets (JWT_SECRET, DB_PASSWORD, etc.)
-
-# 2. Start production
-docker compose up -d
-
-# 3. Run migrations
-docker compose exec app uv run alembic upgrade head
-
-# 4. Verify
-curl http://localhost:9428/health
+./scripts/deploy-staging.sh
 ```
 
-## Development
-
+### Manual:
 ```bash
-# Start dev environment (port 9429, hot reload, separate DB)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-# Run tests
-docker compose exec app uv run pytest -q
-
-# Logs
-docker compose logs -f app
+fly deploy -c fly.staging.toml
 ```
 
-## Bare Metal (no Docker)
+### Recommended workflow:
+1. Create a feature branch: `git checkout -b feature/my-feature`
+2. Push your changes and test locally
+3. Deploy to staging: `./scripts/deploy-staging.sh`
+4. Verify at https://whati8-staging.fly.dev/
+5. Open a PR for review
 
+---
+
+## Promoting to Production
+
+Production deployment requires explicit confirmation. **Never deploy untested code to production.**
+
+**Configuration:** `fly.toml`
+
+### Via script (recommended — includes safety prompt):
 ```bash
-# 1. Install dependencies
-uv sync
-
-# 2. Set up PostgreSQL
-createdb whati8
-createuser whati8
-
-# 3. Configure
-cp .env.example .env
-# Edit .env
-
-# 4. Run migrations
-uv run alembic upgrade head
-
-# 5. Start server
-uv run python -m whati8 serve
-
-# 6. (Optional) systemd service
-cp whati8.service ~/.config/systemd/user/
-systemctl --user enable --now whati8
+./scripts/deploy-prod.sh
 ```
 
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | ✅ | — | PostgreSQL connection string |
-| `JWT_SECRET` | ✅ | — | Secret for JWT signing (32+ chars, 10+ unique) |
-| `ENVIRONMENT` | ❌ | `dev` | `dev`, `staging`, or `prod` |
-| `ALLOWED_ORIGINS` | ❌ | localhost | CORS origins (JSON array) |
-| `DB_PASSWORD` | ❌ | `whati8` | Database password (Docker) |
-| `ANTHROPIC_API_KEY` | ❌ | — | For AI food resolution |
-| `USDA_API_KEY` | ❌ | — | For USDA food search |
-| `RATE_LIMIT_ENABLED` | ❌ | `true` | Enable rate limiting |
-| `RATE_LIMIT_PER_MINUTE` | ❌ | `10` | General API rate limit |
-| `RATE_LIMIT_AI_PER_MINUTE` | ❌ | `5` | AI endpoint rate limit |
-| `JWT_EXPIRATION_HOURS` | ❌ | `1` | Access token lifetime |
-| `REFRESH_TOKEN_EXPIRATION_DAYS` | ❌ | `30` | Refresh token lifetime |
-| `MAX_BODY_SIZE` | ❌ | `1048576` | Max request body (bytes) |
-| `DOCS_ENABLED` | ❌ | auto | Swagger docs (auto: on for dev, off for prod) |
-
-## Database
-
-### Backups
-
+### Manual:
 ```bash
-# Manual backup
-./scripts/backup_db.sh
-
-# Restore from backup
-./scripts/restore_db.sh /var/backups/whati8/whati8_20260329_030000.sql.gz
-
-# Cron (daily at 3 AM)
-echo "0 3 * * * /path/to/whati8/scripts/backup_db.sh" | crontab -
+fly deploy -c fly.toml
 ```
 
-### Migrations
+> ⚠️ The prod deploy script will prompt for confirmation before proceeding.
 
+### Pre-deployment checklist:
+- [ ] All tests pass: `uv run pytest`
+- [ ] Changes validated on staging
+- [ ] PR reviewed and merged to `main`
+- [ ] No secrets committed to the repo
+
+---
+
+## Rollback Procedure
+
+If a production deployment goes wrong, roll back to the previous image:
+
+1. **List recent releases:**
+   ```bash
+   fly releases -a whati8-app
+   ```
+
+2. **Identify the last good image** (e.g., `registry.fly.io/whati8-app:deployment-XXXXXXXX`)
+
+3. **Deploy that image directly:**
+   ```bash
+   fly deploy --image registry.fly.io/whati8-app:deployment-XXXXXXXX -a whati8-app
+   ```
+
+For staging rollbacks, replace `-a whati8-app` with `-a whati8-staging`.
+
+---
+
+## Secrets Management
+
+Secrets (API keys, JWT secret, database URL) are **never stored in `fly.toml` or `fly.staging.toml`**. They are managed via Fly's secret store.
+
+### Set a secret:
 ```bash
-# Apply all migrations
-uv run alembic upgrade head
+# Production
+fly secrets set JWT_SECRET=<value> -a whati8-app
 
-# Check current version
-uv run alembic current
-
-# Generate new migration
-uv run alembic revision --autogenerate -m "description"
+# Staging
+fly secrets set JWT_SECRET=<value> -a whati8-staging
 ```
 
-## API Authentication
-
-### JWT (browser clients)
+### List secrets (names only, values hidden):
 ```bash
-# Login
-curl -X POST http://localhost:9428/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"login": "user", "password": "pass"}'
-
-# Use access_token
-curl http://localhost:9428/api/v1/auth/me \
-  -H "Authorization: Bearer <access_token>"
-
-# Refresh when expired
-curl -X POST http://localhost:9428/api/v1/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{"refresh_token": "<refresh_token>"}'
+fly secrets list -a whati8-app
 ```
 
-### API Keys (scripts, MCP, automation)
-```bash
-# Create key (requires JWT auth)
-curl -X POST http://localhost:9428/api/v1/auth/api-keys \
-  -H "Authorization: Bearer <jwt>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "My Script"}'
+### Required secrets:
+| Secret           | Description                        |
+|------------------|------------------------------------|
+| `DATABASE_URL`   | PostgreSQL connection string       |
+| `JWT_SECRET`     | Secret key for JWT token signing   |
+| `ANTHROPIC_API_KEY` | Anthropic API key (if used)     |
+| `COHERE_API_KEY` | Cohere API key (if used)           |
 
-# Use via Bearer
-curl http://localhost:9428/api/v1/foods/search?q=egg \
-  -H "Authorization: Bearer wi8_<key>"
+> **Never commit secrets to git.** Use `fly secrets set` or the Fly dashboard.
 
-# Or via X-API-Key header
-curl http://localhost:9428/api/v1/foods/search?q=egg \
-  -H "X-API-Key: wi8_<key>"
-```
+---
 
-## Production Checklist
+## Configuration Differences
 
-- [ ] Set `ENVIRONMENT=prod`
-- [ ] Set strong `JWT_SECRET` (32+ chars, random)
-- [ ] Set `ALLOWED_ORIGINS` to your domain
-- [ ] Set unique `DB_PASSWORD`
-- [ ] Configure daily backup cron
-- [ ] Set up TLS (Caddy, cloud LB, or Cloudflare)
-- [ ] Review rate limits for expected traffic
-- [ ] Verify `/health` endpoint responds
-- [ ] Swagger docs disabled (`/api/v1/docs` returns 404)
-
-## Architecture
-
-```
-Client → [TLS Termination] → whati8 (FastAPI/uvicorn :9428) → PostgreSQL
-                                ↑
-                          Middleware stack:
-                          1. Body size limit
-                          2. Security headers
-                          3. CORS
-                          4. Rate limiting
-```
-
-### Dev vs Prod
-
-| | Dev | Prod |
-|---|---|---|
-| Port | 9429 | 9428 |
-| DB | whati8_dev | whati8 |
-| Hot reload | ✅ | ❌ |
-| Swagger docs | ✅ | ❌ |
-| CORS | localhost allowed | explicit origins only |
-| Restart | manual | always |
+| Setting            | Development     | Staging                            | Production              |
+|--------------------|-----------------|------------------------------------|-------------------------|
+| `ENVIRONMENT`      | `dev`           | `staging`                          | `prod`                  |
+| `LOG_LEVEL`        | `debug`         | `info`                             | `info`                  |
+| `REGISTRATION_ENABLED` | `true`      | `true`                             | `false`                 |
+| `ALLOWED_ORIGINS`  | `*` / localhost | `whati8-staging.fly.dev, localhost` | `whati8.app`           |
+| `auto_stop`        | N/A             | `suspend` (saves cost)             | `off` (always on)       |
+| Secrets            | `.env` file     | `fly secrets` (staging app)        | `fly secrets` (prod app)|

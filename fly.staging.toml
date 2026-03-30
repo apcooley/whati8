@@ -1,14 +1,14 @@
-app = "whati8-app"
+app = "whati8-staging"
 primary_region = "dfw"
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
-  ENVIRONMENT = "prod"
+  ENVIRONMENT = "staging"
   LOG_LEVEL = "info"
-  ALLOWED_ORIGINS = '["https://whati8.app"]'
-  REGISTRATION_ENABLED = "false"
+  ALLOWED_ORIGINS = '["https://whati8-staging.fly.dev", "http://localhost:5173"]'
+  REGISTRATION_ENABLED = "true"
   DB_POOL_SIZE = "5"
   DB_MAX_OVERFLOW = "2"
   DB_POOL_RECYCLE = "300"
@@ -16,7 +16,7 @@ primary_region = "dfw"
 [http_service]
   internal_port = 9428
   force_https = true
-  auto_stop = "off"
+  auto_stop = "suspend"
   auto_start = true
 
 [[http_service.checks]]

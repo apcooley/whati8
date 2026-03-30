@@ -7,6 +7,7 @@ retrieving detailed food information with nutrients.
 
 from anthropic import APIError as AnthropicAPIError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from whati8.api.limiter import limiter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,15 @@ from whati8.services.food_resolver import FoodResolverService
 
 
 router = APIRouter(prefix="/foods", tags=["foods"])
+
+
+class BatchSummaryItem(BaseModel):
+    food_id: int
+    quantity: float = Field(gt=0, description="Quantity in grams, must be positive")
+
+
+class BatchSummaryRequest(BaseModel):
+    items: list[BatchSummaryItem]
 
 
 @router.post("/", response_model=FoodResponse)
@@ -580,6 +590,49 @@ async def resolve_foods(
                 status_code=500,
                 detail="AI service error",
             )
+
+
+@router.post("/batch-summary")
+async def get_batch_food_summary(
+    body: BatchSummaryRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get nutrient summaries for multiple foods in a single request."""
+    if len(body.items) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 items per batch")
+
+    from whati8.api.routers.summary_config import _ensure_defaults
+    from whati8.services.nutrient_calculator import NutrientCalculator, NutrientInput
+
+    # Load user config ONCE
+    config_items = await _ensure_defaults(db, current_user.id)
+
+    # Load ALL foods in ONE query
+    food_ids = list({item.food_id for item in body.items})
+    result = await db.execute(
+        select(Food)
+        .where(Food.id.in_(food_ids))
+        .options(
+            selectinload(Food.food_nutrients).selectinload(FoodNutrient.nutrient),
+            selectinload(Food.portions),
+        )
+    )
+    foods_by_id = {f.id: f for f in result.scalars().all()}
+
+    # Compute all summaries
+    summaries = {}
+    for item in body.items:
+        food = foods_by_id.get(item.food_id)
+        if food:
+            ni = NutrientInput(food=food, quantity=item.quantity, unit="grams")
+            summary = NutrientCalculator.compute_summary([ni], config_items, formula_mode="per_item")
+            # Use g-format to match JavaScript's number stringification
+            # (100.0 → "100", 150.5 → "150.5")
+            qty_str = f"{item.quantity:g}"
+            summaries[f"{item.food_id}:{qty_str}"] = summary
+
+    return summaries
 
 
 @router.get("/{food_id}/summary")

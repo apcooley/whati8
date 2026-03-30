@@ -4,7 +4,8 @@
    * Uses the server-side compute_food_summary — same logic as daily log view.
    * Single source of truth for nutrient display anywhere in the app.
    */
-  import { getFoodSummary, type SummaryNutrient } from '../api/foods';
+  import { type SummaryNutrient } from '../api/foods';
+  import { getFoodSummaryBatched } from '../api/summaryBatch';
 
   export let foodId: number;
   export let quantity: number = 100; // grams
@@ -38,7 +39,7 @@
 
   async function loadSummary(fid: number, qty: number) {
     try {
-      const result = await getFoodSummary(fid, qty);
+      const result = await getFoodSummaryBatched(fid, qty);
       // Only update if this is still the current request
       if (`${fid}-${qty}` === lastKey) {
         badges = result.filter(b => b.value !== 0);
