@@ -16,7 +16,10 @@ from whati8.config import settings
 _SKIP_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 # Paths that need a larger body limit (e.g., file uploads)
-_LARGE_BODY_PATHS = {"/api/v1/photo/recognize"}
+# Include both forms: with and without the /api/v1 prefix.
+# Starlette middleware may see the path with or without the prefix
+# depending on how the app is mounted.
+_LARGE_BODY_PATHS = {"/api/v1/photo/recognize", "/photo/recognize"}
 _LARGE_BODY_MAX = 10 * 1024 * 1024  # 10MB
 
 _ERROR_BODY = json.dumps(

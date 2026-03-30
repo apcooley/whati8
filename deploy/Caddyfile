@@ -37,20 +37,27 @@ https://192.168.1.11 {
 		-Server
 	}
 
-	# Reverse proxy to whati8 backend
-	reverse_proxy localhost:9428 {
-		# Pass real client IP to backend for rate limiting
-		header_up X-Real-IP {remote_host}
-
-		# Health check — Caddy will stop routing if backend is down
-		health_uri /health
-		health_interval 30s
-		health_timeout 5s
+	# Photo uploads get 10MB body limit
+	handle /api/v1/photo/recognize {
+		request_body {
+			max_size 10MB
+		}
+		reverse_proxy localhost:9428 {
+			header_up X-Real-IP {remote_host}
+		}
 	}
 
-	# Request size limit (match backend's 1MB limit)
-	request_body {
-		max_size 1MB
+	# Everything else gets 1MB body limit
+	handle {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy localhost:9428 {
+			header_up X-Real-IP {remote_host}
+			health_uri /health
+			health_interval 30s
+			health_timeout 5s
+		}
 	}
 
 	# Access logging

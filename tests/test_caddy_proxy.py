@@ -129,6 +129,27 @@ class TestRequestLimits:
         assert resp.status_code == 413
 
 
+class TestPhotoUploadThroughProxy:
+    """Regression test: photo uploads through Caddy must not get 413."""
+
+    def test_photo_upload_passes_caddy_limit(self, client):
+        """2MB photo upload through Caddy should not get 413.
+
+        This is the exact bug that broke photo uploads — Caddy had a
+        global 1MB request_body limit with no photo path exception.
+        """
+        big = b"\xff\xd8\xff" + b"x" * (2 * 1024 * 1024)
+        resp = client.post(
+            f"{PROXY_BASE}/api/v1/photo/recognize",
+            files={"file": ("test.jpg", big, "image/jpeg")},
+            timeout=30,
+        )
+        # Expect 401 (no auth) or 500 (bad image), but NOT 413
+        assert resp.status_code != 413, (
+            f"Caddy blocked photo upload with 413 — check handle blocks in Caddyfile"
+        )
+
+
 class TestEdgeCases:
     """Edge case tests for proxy behavior."""
 
