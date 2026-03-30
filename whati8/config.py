@@ -134,9 +134,8 @@ class Settings(BaseSettings):
 
     # USDA Food Data Central API
     usda_api_key: str = Field(
-        ...,
-        min_length=1,
-        description="USDA FDC API key from https://fdc.nal.usda.gov/api-key-signup.html",
+        default="",
+        description="USDA FDC API key from https://fdc.nal.usda.gov/api-key-signup.html (optional in prod, data pre-imported)",
     )
 
     # Authentication
@@ -208,6 +207,12 @@ class Settings(BaseSettings):
     docs_enabled: bool | None = Field(
         default=None,
         description="Enable Swagger docs (default: True for dev/staging, False for prod)",
+    )
+
+    # Registration control
+    registration_enabled: bool = Field(
+        default=True,
+        description="Enable user registration",
     )
 
     # Request body size limit
@@ -293,6 +298,14 @@ class Settings(BaseSettings):
             file_secret_settings,
         )
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def convert_postgres_scheme(cls, v: Any) -> Any:
+        """Convert postgres:// to postgresql:// before Pydantic validates."""
+        if isinstance(v, str) and v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql://", 1)
+        return v
+
     @field_validator("jwt_secret")
     @classmethod
     def validate_jwt_secret(cls, v: str) -> str:
@@ -369,12 +382,26 @@ class Settings(BaseSettings):
         """
         url = str(self.database_url)
 
+        # Fly.io uses postgres:// but SQLAlchemy requires postgresql://
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+
+        # asyncpg doesn't support sslmode as a query parameter — strip it
+        # (Fly internal network doesn't require SSL between app and DB)
+        if "?" in url and "sslmode" in url:
+            from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            params.pop("sslmode", None)
+            cleaned_query = urlencode(params, doseq=True)
+            url = urlunparse(parsed._replace(query=cleaned_query))
+
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif not url.startswith("postgresql+asyncpg://"):
             raise ValueError(
                 f"Invalid database URL format: {url}. "
-                "Expected postgresql:// or postgresql+asyncpg://"
+                "Expected postgresql://, postgres://, or postgresql+asyncpg://"
             )
 
         return url

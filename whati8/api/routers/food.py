@@ -578,7 +578,7 @@ async def resolve_foods(
         else:
             raise HTTPException(
                 status_code=500,
-                detail=f"AI service error: {str(e)}",
+                detail="AI service error",
             )
 
 

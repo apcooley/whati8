@@ -35,7 +35,7 @@ async def recognize_photo(
         )
     except Exception as e:
         logger.error(f"Photo recognition failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Recognition failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Recognition failed")
 
     return {
         "is_nutrition_label": result.is_nutrition_label,

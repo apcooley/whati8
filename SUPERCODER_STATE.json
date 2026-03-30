@@ -1,16 +1,18 @@
 {
-  "project": "whati8-fix-manual-food-entry",
+  "project": "whati8-fly-deploy",
   "plan_file": "PLAN.md",
   "current_step": 1,
-  "total_steps": 4,
-  "status": "in_progress",
+  "total_steps": 6,
+  "status": "planning",
   "planning_model": "anthropic/claude-opus-4-6",
   "coding_model": "anthropic/claude-sonnet-4-6",
   "review_model": "anthropic/claude-opus-4-6",
   "steps": [
-    { "id": 1, "title": "Rename PhotoResults → FoodEntryForm + empty mode", "status": "in_progress" },
-    { "id": 2, "title": "Wire manual mode into AddFoodView", "status": "pending" },
-    { "id": 3, "title": "Extract shared constants", "status": "pending" },
-    { "id": 4, "title": "Cleanup + verify build", "status": "pending" }
+    { "id": 1, "title": "Fly.io Setup & Configuration", "status": "pending" },
+    { "id": 2, "title": "Production Database & Migrations", "status": "pending" },
+    { "id": 3, "title": "Production Config & Security Hardening", "status": "pending" },
+    { "id": 4, "title": "Deploy & Smoke Test", "status": "pending" },
+    { "id": 5, "title": "Custom Domain & TLS", "status": "pending" },
+    { "id": 6, "title": "CI/CD & Monitoring", "status": "pending" }
   ]
 }

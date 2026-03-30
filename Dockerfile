@@ -52,5 +52,5 @@ EXPOSE 9428
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -sf http://localhost:9428/health || exit 1
 
-# Run with uv
-CMD ["uv", "run", "python", "-m", "whati8", "serve"]
+# Run with uv (--no-dev to skip dev dependencies like playwright/ruff)
+CMD ["uv", "run", "--no-dev", "python", "-m", "whati8", "serve"]

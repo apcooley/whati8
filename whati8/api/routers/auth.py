@@ -31,6 +31,8 @@ async def register(
     Returns created user (without password).
     Raises 409 if username/email already exists (handled by exception handler).
     """
+    if not settings.registration_enabled:
+        raise HTTPException(status_code=403, detail="Registration is currently disabled")
     user = await AuthService.create_user(db, user_data)
     return UserResponse.model_validate(user)
 

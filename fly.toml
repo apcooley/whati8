@@ -1,0 +1,24 @@
+app = "whati8-app"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "prod"
+  LOG_LEVEL = "info"
+  ALLOWED_ORIGINS = '["https://whati8.app"]'
+  REGISTRATION_ENABLED = "false"
+
+[http_service]
+  internal_port = 9428
+  force_https = true
+  auto_stop = "suspend"
+  auto_start = true
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"

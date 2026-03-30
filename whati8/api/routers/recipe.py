@@ -249,7 +249,7 @@ async def update_recipe(
             serving_unit=update_data.serving_unit,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail="Resource not found")
 
     # Reload with relationships
     recipe = await _load_recipe_with_details(db, recipe.id)
@@ -293,7 +293,7 @@ async def add_ingredient(
         # Check for circular dependency error
         if "circular" in str(e).lower():
             raise HTTPException(status_code=400, detail=str(e))
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail="Resource not found")
 
     return {"message": "Ingredient added successfully"}
 

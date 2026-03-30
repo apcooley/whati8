@@ -698,7 +698,7 @@ async def create_logs_batch(
         logger.error(f"Error creating batch logs: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create batch logs: {str(e)}",
+            detail="Failed to create batch logs",
         )
 
 
@@ -849,5 +849,5 @@ Be conversational and encouraging!"""
         logger.error(f"Error creating batch logs with summary: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create batch logs: {str(e)}",
+            detail="Failed to create batch logs",
         )

@@ -717,7 +717,7 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
 
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}
 
     @staticmethod
     async def _tool_log_food(
@@ -756,7 +756,7 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
         except Exception as e:
             await db.rollback()
             logger.error(f"Error logging food: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}
 
     @staticmethod
     async def _tool_search_foods(db: AsyncSession, params: dict) -> dict:
@@ -791,7 +791,7 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
 
         except Exception as e:
             logger.error(f"Error searching foods: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}
 
     @staticmethod
     async def _tool_resolve_foods_nl(db: AsyncSession, params: dict) -> dict:
@@ -811,7 +811,7 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
 
         except Exception as e:
             logger.error(f"Error resolving foods: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}
 
     @staticmethod
     async def _tool_list_logs(
@@ -859,7 +859,7 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
 
         except Exception as e:
             logger.error(f"Error listing logs: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}
 
     @staticmethod
     async def _tool_delete_log(
@@ -899,7 +899,7 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
         except Exception as e:
             await db.rollback()
             logger.error(f"Error deleting log: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}
 
     @staticmethod
     async def _tool_get_daily_summary(
@@ -937,4 +937,4 @@ Example GOOD response (error): "I tried to parse 'xyz123' but couldn't identify 
 
         except Exception as e:
             logger.error(f"Error getting daily summary: {e}")
-            return {"error": str(e)}
+            return {"error": "An internal error occurred. Please try again."}

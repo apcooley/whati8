@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /api/
+Disallow: /health
+
+User-agent: *
+Allow: /
+
+Sitemap: https://whati8.app/sitemap.xml

@@ -19,6 +19,11 @@ from sqlalchemy.ext.asyncio import (
 from whati8.config import settings
 
 # Create async engine with asyncpg driver
+_connect_args = {}
+# Fly.io internal Postgres doesn't use SSL — disable it for asyncpg
+if "flycast" in str(settings.database_url) or ".internal" in str(settings.database_url):
+    _connect_args["ssl"] = False
+
 engine: AsyncEngine = create_async_engine(
     settings.get_async_database_url(),
     echo=settings.debug,
@@ -26,6 +31,7 @@ engine: AsyncEngine = create_async_engine(
     max_overflow=settings.db_max_overflow,
     pool_recycle=settings.db_pool_recycle,
     pool_pre_ping=True,  # Verify connections before using
+    connect_args=_connect_args,
 )
 
 # Session factory
