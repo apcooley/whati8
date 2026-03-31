@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -26,8 +27,6 @@ def _is_energy(name: str) -> bool:
 def _is_carb(name: str) -> bool:
     return "carbohydrate" in name.lower()
 
-
-import math
 
 # Maps friendly keys to name-matching functions.
 # "calories" and "carbs" are listed here for completeness but are handled
@@ -196,6 +195,11 @@ def compute_item_nutrients(
     else:
         calories = energy_plain if energy_plain is not None else 0.0
 
+    # Backfill by_id so ANY energy nutrient_id lookup returns the coalesced value
+    for name, _, _, nid in nutrients:
+        if _is_energy(name):
+            by_id[nid] = calories
+
     # ── Carb coalescing ────────────────────────────────────────────────────
     carb_summation: float | None = None
     carb_difference: float | None = None
@@ -209,6 +213,11 @@ def compute_item_nutrients(
                 carb_difference = amount
 
     carbs = carb_summation if carb_summation is not None else max(carb_difference or 0.0, 0.0)
+
+    # Backfill by_id so ANY carb nutrient_id lookup returns the coalesced value
+    for name, _, _, nid in nutrients:
+        if _is_carb(name):
+            by_id[nid] = carbs
 
     # ── Friendly values ────────────────────────────────────────────────────
     friendly: dict[str, float] = {"calories": calories, "carbs": carbs}
@@ -292,7 +301,21 @@ class NutrientCalculator:
                 else:  # per_item (default)
                     value = sum(_eval_formula(cfg.formula, f) for f in item_friendlies)
             elif cfg.nutrient_id is not None:
-                value = sum(by_id.get(cfg.nutrient_id, 0.0) for by_id in item_by_ids)
+                # Check if this config item references an energy or carb nutrient
+                # by checking the display_name against known friendly keys.
+                # This ensures we use the coalesced value regardless of which
+                # energy/carb nutrient variant the food happens to store.
+                friendly_key = None
+                dn = cfg.display_name.lower()
+                if dn in ("calories", "cal", "energy", "kcal"):
+                    friendly_key = "calories"
+                elif dn in ("carbs", "carbohydrates", "carbohydrate"):
+                    friendly_key = "carbs"
+
+                if friendly_key:
+                    value = sum(f.get(friendly_key, 0.0) for f in item_friendlies)
+                else:
+                    value = sum(by_id.get(cfg.nutrient_id, 0.0) for by_id in item_by_ids)
             else:
                 value = 0.0
 

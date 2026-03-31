@@ -1,43 +1,108 @@
-# PLAN.md — Fix Recipe Nutrition Calculation
+# PLAN.md — Nutrition Calculator Refactor
 
-## Problem
-Three bugs in recipe nutrition calculation:
+## Goal
+Eliminate redundant energy/carb coalescing layers. Make `compute_item_nutrients()` the single source of truth. Remove all nutrient_id-based lookups for energy/carbs.
 
-### Bug 1: Duplicate FoodNutrient entries
-Every recipe edit creates a new materialized Food via `_materialize_recipe`, but old Food entries and their FoodNutrient rows are never cleaned up. Result: recipe food ID 19776 (Baked Potato Soup) has 6 duplicate rows for carbs, 6 for protein, etc.
+## Current Architecture (3 coalescing layers — BAD)
+1. `compute_item_nutrients()` → `friendly` dict (correct coalescing)
+2. `compute_summary_from_precomputed()` → display_name hack to bypass `by_id`
+3. `_compute_recipe_nutrients()` → two-pass global canonical ID system (60+ lines)
 
-### Bug 2: `_recalculate_food_nutrition` diverges from `_materialize_recipe`
-When servings change, `_recalculate_food_nutrition` uses direct nutrient-per-gram math. But `_materialize_recipe` uses `compute_item_nutrients` with energy/carb coalescing. These produce different results — the recalculate path doesn't handle USDA energy variants (Atwater General vs Specific).
+## Target Architecture (1 layer — GOOD)
 
-### Bug 3: Stale materialized foods pile up
-Each recipe edit calls `_materialize_recipe` which creates a NEW Food. The old ones (with wrong macros) stay in the DB forever, consuming space and potentially showing up in searches.
+### `compute_item_nutrients(food, qty, unit)` → `friendly` dict
+- Single source of truth for per-food nutrition
+- Handles all energy coalescing (Atwater General > Specific > plain)
+- Handles all carb coalescing (summation > difference)
+- Returns `friendly: {calories, carbs, protein, fat, fiber, sugar, sat_fat, sodium, potassium}`
+- Also returns `by_id` for non-coalesced nutrients (minerals, vitamins, etc.)
 
-## Root Cause
-The recipe system has two code paths for nutrition calculation that should be one. And neither path cleans up old data.
+### Recipe nutrition = `Σ friendly` across ingredients
+```python
+total_friendly = {k: 0 for k in FRIENDLY_MAP}
+for ingredient in recipe.ingredients:
+    friendly, _ = compute_item_nutrients(food, qty_grams, "grams")
+    for k in friendly:
+        total_friendly[k] += friendly[k]
+```
+- Store as FoodNutrient entries using canonical nutrient IDs (one mapping dict)
+- No two-pass system, no energy/carb special handling
+- ~15 lines instead of ~60
 
-## Fix
+### Summary display = `friendly` → user config
+```python
+for cfg in user_config:
+    if cfg.formula:
+        value = eval_formula(cfg.formula, total_friendly)  # formulas ALWAYS use totals
+    elif cfg.friendly_key:  # NEW: map config to friendly key
+        value = total_friendly[cfg.friendly_key]
+    elif cfg.nutrient_id:  # fallback for vitamins/minerals
+        value = sum(by_id.get(cfg.nutrient_id, 0) for by_id in item_by_ids)
+```
 
-### Step 1: Unify nutrition calculation
-- Extract the nutrition calculation from `_materialize_recipe` into a shared helper: `_compute_recipe_nutrition(db, recipe) -> (total_weight, nutrient_totals)`
-- Both `_materialize_recipe` and `_recalculate_food_nutrition` call this helper
-- The helper uses `compute_item_nutrients` for proper energy/carb coalescing
-- Single source of truth for recipe nutrition math
+### Custom formulas (WW points, etc.)
+- Applied to `total_friendly`, NOT per-ingredient
+- Input variables are friendly keys: `Calories`, `Fat`, `Fiber`, `Protein`
+- `formula_mode` simplified: formulas always get totals
 
-### Step 2: Clean up on rematerialization
-- When `_materialize_recipe` creates a new Food, delete the OLD Food's FoodNutrient and FoodPortion entries
-- Mark old Food as `is_recipe_expired=True` (already exists, just not consistently set)
-- `_recalculate_food_nutrition` should DELETE all existing FoodNutrient entries for the food before inserting fresh ones (prevents duplicates)
+## Schema Change (user_summary_nutrients)
+Add `friendly_key` column (nullable):
+- "Calories" → friendly_key="calories"
+- "Protein" → friendly_key="protein" 
+- "Carbs" → friendly_key="carbs"
+- "Fat" → friendly_key="fat"
+- "Fiber" → friendly_key="fiber"
+- WW Points → formula (no friendly_key needed)
+- Vitamin C → nutrient_id (no friendly_key)
 
-### Step 3: Data migration
-- Write a one-shot script or management command that:
-  1. Finds all recipes
-  2. For each recipe, recalculates nutrition using the fixed code
-  3. Cleans up duplicate FoodNutrient entries
-  4. Cleans up stale materialized Food entries
-- Run against Cloud SQL to fix existing data
+Migration: populate `friendly_key` for existing rows based on display_name.
 
-### Step 4: Tests
-- Test that updating servings produces correct macros (not duplicates)
-- Test that editing a recipe doesn't leave duplicate FoodNutrient entries
-- Test that the Baked Potato Soup specifically calculates correctly
-- Test that `_compute_recipe_nutrition` matches expected values for known ingredients
+## Canonical Nutrient ID Mapping (for recipe FoodNutrient storage)
+```python
+CANONICAL_NUTRIENT_IDS = {
+    "calories": 39,    # Energy
+    "carbs": 81,       # Carbohydrate, by difference
+    "protein": 34,     # Protein
+    "fat": 80,         # Total lipid (fat)
+    "fiber": 41,       # Fiber, total dietary
+    "sugar": 95,       # Sugars, Total
+    "sat_fat": 96,     # Fatty acids, total saturated
+    "sodium": 64,      # Sodium, Na
+    "potassium": 66,   # Potassium, K
+}
+```
+These IDs should be looked up from DB on startup and cached, not hardcoded.
+
+## Changes Required
+
+### 1. `nutrient_calculator.py`
+- `compute_item_nutrients()`: Keep as-is (already correct)
+- `compute_summary_from_precomputed()`: Use `friendly_key` from config when available, fall back to `nutrient_id` for vitamins/minerals. Remove display_name hack.
+- Remove `by_id` backfill (no longer needed once summary uses friendly_key)
+
+### 2. `recipe_service.py`
+- `_compute_recipe_nutrients()`: Replace 60-line two-pass system with simple `Σ friendly` loop
+- Store recipe nutrition using canonical IDs from mapping
+- Keep non-coalesced nutrients (vitamins/minerals) accumulated via `by_id`
+
+### 3. `models/user_summary_nutrient.py` (or equivalent)
+- Add `friendly_key: str | None` column
+- Migration to populate existing rows
+
+### 4. `summary_config.py` (router)
+- `_ensure_defaults()`: Include `friendly_key` in default config creation
+- API: Accept `friendly_key` in create/update
+
+### 5. Tests
+- Unit tests for simplified recipe nutrition
+- Verify WW points formula uses total (not per-ingredient)
+- Verify friendly_key lookup works for summary
+- Verify nutrient_id fallback still works for vitamins/minerals
+
+## Migration Plan
+1. Add `friendly_key` column (nullable, no breaking change)
+2. Populate `friendly_key` for existing rows
+3. Update `compute_summary_from_precomputed` to prefer `friendly_key`
+4. Simplify `_compute_recipe_nutrients` 
+5. Remove `by_id` backfill and display_name hack
+6. Update default config creation
