@@ -20,9 +20,24 @@ from whati8.config import settings
 
 # Create async engine with asyncpg driver
 _connect_args = {}
+_db_url = str(settings.database_url)
+
 # Fly.io internal Postgres doesn't use SSL — disable it for asyncpg
-if "flycast" in str(settings.database_url) or ".internal" in str(settings.database_url):
+if "flycast" in _db_url or ".internal" in _db_url:
     _connect_args["ssl"] = False
+
+# Cloud SQL Unix socket: extract host= query param for asyncpg
+if "host=/cloudsql/" in _db_url:
+    from urllib.parse import urlparse, parse_qs
+    parsed = urlparse(_db_url)
+    qs = parse_qs(parsed.query)
+    socket_dir = qs.get("host", [None])[0]
+    if socket_dir:
+        _connect_args["host"] = socket_dir
+        # Remove host from query string since it's now in connect_args
+        # Rebuild URL without the host param (use localhost as placeholder)
+        clean_url = _db_url.split("?")[0]
+        settings.database_url = clean_url
 
 engine: AsyncEngine = create_async_engine(
     settings.get_async_database_url(),

@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Database
-    database_url: PostgresDsn = Field(
+    database_url: str = Field(
         ...,
         description="PostgreSQL database URL (postgresql+asyncpg://user:pass@host:port/db)",
     )
