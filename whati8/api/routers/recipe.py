@@ -106,12 +106,14 @@ def _build_recipe_response(recipe: Recipe, per_serving: PerServingNutrition) -> 
         serving_unit=recipe.serving_unit,
         current_version=recipe.current_version,
         food_id=recipe.current_food_id,
+        current_food_id=recipe.current_food_id,
         ingredients=ingredients_response,
         per_serving=per_serving,
     )
 
 
-@router.post("/", response_model=RecipeResponse, status_code=status.HTTP_200_OK)
+@router.post("", response_model=RecipeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RecipeResponse)
 async def create_recipe(
     recipe_data: RecipeCreateRequest,
     current_user: User = Depends(get_current_user),

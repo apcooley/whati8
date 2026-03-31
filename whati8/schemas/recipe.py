@@ -74,6 +74,7 @@ class RecipeResponse(BaseORMModel):
     serving_unit: str
     current_version: int
     food_id: int | None = Field(None, description="Current materialized food ID")
+    current_food_id: int | None = Field(None, description="Current materialized food ID (alias for food_id)")
     ingredients: list[RecipeIngredientResponse] = Field(default_factory=list)
     per_serving: PerServingNutrition
 

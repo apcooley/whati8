@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -176,14 +176,7 @@ class RecipeService:
         # Increment version and re-materialize
         new_version = recipe.current_version + 1
         old_food_id = recipe.current_food_id
-
-        # Mark old food as expired
-        if old_food_id:
-            old_food = await db.get(Food, old_food_id)
-            if old_food:
-                old_food.is_recipe_expired = True
-
-        # Create new materialized food
+        # Create new materialized food (marks old food as expired internally)
         new_food = await RecipeService._materialize_recipe(db, recipe, user_id, version=new_version)
         recipe.current_version = new_version
         recipe.current_food_id = new_food.id
@@ -337,114 +330,18 @@ class RecipeService:
                 _fresh_nutrients[fid] = list(_fn_result.unique().scalars().all())
 
         # Calculate total weight and nutrients
-        total_weight = Decimal("0")
-        nutrient_totals: dict[int, Decimal] = {}
-
-        from whati8.services.nutrient_calculator import (
-            NutrientInput as CalcInput,
-            compute_item_nutrients,
-            _is_energy,
-            _is_carb,
+        total_weight, nutrient_totals = await RecipeService._compute_recipe_nutrients(
+            db, recipe, ingredients, _fresh_nutrients
         )
 
-        # ── Pass 1: determine a SINGLE global canonical ID for energy and carbs ──
-        # Different ingredients may have different "winning" energy/carb variants
-        # (e.g., USDA has Atwater General; custom food has plain Energy only).
-        # We pick ONE canonical ID per category for the whole recipe so the
-        # materialized food always has exactly one energy and one carb FoodNutrient.
-        #
-        # Energy priority (by name): Atwater General > Atwater Specific > plain
-        # Carb priority (by name): by summation > by difference > generic
-        global_energy_id: int | None = None
-        global_energy_priority: int = 99  # lower = better
-        global_carb_id: int | None = None
-        global_carb_priority: int = 99
-
-        for ingredient in ingredients:
-            food_nutrients_fresh = _fresh_nutrients.get(ingredient.food.id, ingredient.food.food_nutrients)
-            for fn in food_nutrients_fresh:
-                name = fn.nutrient.name
-                name_lower = name.lower()
-                if _is_energy(name):
-                    if "atwater general" in name_lower:
-                        priority = 0
-                    elif "atwater specific" in name_lower:
-                        priority = 1
-                    else:
-                        priority = 2
-                    if priority < global_energy_priority:
-                        global_energy_priority = priority
-                        global_energy_id = fn.nutrient_id
-                elif _is_carb(name):
-                    if "summation" in name_lower:
-                        priority = 0
-                    elif "difference" in name_lower:
-                        priority = 1
-                    else:
-                        priority = 2
-                    if priority < global_carb_priority:
-                        global_carb_priority = priority
-                        global_carb_id = fn.nutrient_id
-
-        # ── Pass 2: accumulate nutrients per ingredient ───────────────────────────
-        for ingredient in ingredients:
-            food = ingredient.food
-            # Use fresh nutrients from DB, not potentially stale session cache
-            food_nutrients_fresh = _fresh_nutrients.get(food.id, food.food_nutrients)
-
-            # Temporarily replace food_nutrients with fresh ones for the calculator
-            original_food_nutrients = food.food_nutrients
-            food.food_nutrients = food_nutrients_fresh
-
-            # Calculate weight in grams
-            quantity_in_grams = await RecipeService._get_quantity_in_grams(
-                db, ingredient
+        # Bug 3: Mark old materialized food as expired before creating new one
+        if recipe.current_food_id:
+            old_food_result = await db.execute(
+                select(Food).where(Food.id == recipe.current_food_id)
             )
-            total_weight += quantity_in_grams
-
-            # Use NutrientCalculator to get coalesced friendly values and per-id amounts
-            calc_input = CalcInput(
-                food=food,
-                quantity=float(quantity_in_grams),
-                unit="grams",
-            )
-            friendly, by_id = compute_item_nutrients(calc_input)
-
-            # Restore original food_nutrients
-            food.food_nutrients = original_food_nutrients
-
-            # Collect all energy/carb IDs for this ingredient (to skip in general loop)
-            _energy_ids: set[int] = set()
-            _carb_ids: set[int] = set()
-            for fn in food_nutrients_fresh:
-                name = fn.nutrient.name
-                if _is_energy(name):
-                    _energy_ids.add(fn.nutrient_id)
-                elif _is_carb(name):
-                    _carb_ids.add(fn.nutrient_id)
-
-            # Accumulate coalesced energy under GLOBAL canonical ID
-            coalesced_energy = friendly["calories"]
-            if coalesced_energy and global_energy_id is not None:
-                if global_energy_id not in nutrient_totals:
-                    nutrient_totals[global_energy_id] = Decimal("0")
-                nutrient_totals[global_energy_id] += Decimal(str(coalesced_energy))
-
-            # Accumulate coalesced carbs under GLOBAL canonical ID
-            coalesced_carbs = friendly["carbs"]
-            if coalesced_carbs and global_carb_id is not None:
-                if global_carb_id not in nutrient_totals:
-                    nutrient_totals[global_carb_id] = Decimal("0")
-                nutrient_totals[global_carb_id] += Decimal(str(coalesced_carbs))
-
-            # Accumulate all other (non-energy, non-carb) nutrients from by_id
-            skip_ids = _energy_ids | _carb_ids
-            for nutrient_id, amount in by_id.items():
-                if nutrient_id in skip_ids:
-                    continue
-                if nutrient_id not in nutrient_totals:
-                    nutrient_totals[nutrient_id] = Decimal("0")
-                nutrient_totals[nutrient_id] += Decimal(str(amount))
+            old_food = old_food_result.scalar_one_or_none()
+            if old_food:
+                old_food.is_recipe_expired = True
 
         # Create Food entry
         serving_size = total_weight / recipe.servings
@@ -507,6 +404,125 @@ class RecipeService:
         await db.flush()
 
         return food
+
+    @staticmethod
+    async def _compute_recipe_nutrients(
+        db: AsyncSession,
+        recipe: "Recipe",
+        ingredients: list,
+        _fresh_nutrients: dict | None = None,
+    ) -> tuple[Decimal, dict[int, Decimal]]:
+        """Compute total weight and nutrient totals for a recipe's ingredients.
+
+        Uses compute_item_nutrients and two-pass energy/carb coalescing,
+        identical logic to _materialize_recipe.
+
+        Returns:
+            (total_weight: Decimal, nutrient_totals: dict[int, Decimal])
+        """
+        from whati8.services.nutrient_calculator import (
+            NutrientInput as CalcInput,
+            compute_item_nutrients,
+            _is_energy,
+            _is_carb,
+        )
+
+        if _fresh_nutrients is None:
+            _fresh_nutrients = {}
+
+        total_weight = Decimal("0")
+        nutrient_totals: dict[int, Decimal] = {}
+
+        # ── Pass 1: determine a SINGLE global canonical ID for energy and carbs ──
+        global_energy_id: int | None = None
+        global_energy_priority: int = 99
+        global_carb_id: int | None = None
+        global_carb_priority: int = 99
+
+        for ingredient in ingredients:
+            food_nutrients_fresh = _fresh_nutrients.get(ingredient.food.id, ingredient.food.food_nutrients)
+            for fn in food_nutrients_fresh:
+                name = fn.nutrient.name
+                name_lower = name.lower()
+                if _is_energy(name):
+                    if "atwater general" in name_lower:
+                        priority = 0
+                    elif "atwater specific" in name_lower:
+                        priority = 1
+                    else:
+                        priority = 2
+                    if priority < global_energy_priority:
+                        global_energy_priority = priority
+                        global_energy_id = fn.nutrient_id
+                elif _is_carb(name):
+                    if "summation" in name_lower:
+                        priority = 0
+                    elif "difference" in name_lower:
+                        priority = 1
+                    else:
+                        priority = 2
+                    if priority < global_carb_priority:
+                        global_carb_priority = priority
+                        global_carb_id = fn.nutrient_id
+
+        # ── Pass 2: accumulate nutrients per ingredient ───────────────────────────
+        for ingredient in ingredients:
+            food = ingredient.food
+            food_nutrients_fresh = _fresh_nutrients.get(food.id, food.food_nutrients)
+
+            # Temporarily replace food_nutrients with fresh ones for the calculator
+            original_food_nutrients = food.food_nutrients
+            food.food_nutrients = food_nutrients_fresh
+
+            # Calculate weight in grams
+            quantity_in_grams = await RecipeService._get_quantity_in_grams(db, ingredient)
+            total_weight += quantity_in_grams
+
+            # Use NutrientCalculator to get coalesced friendly values and per-id amounts
+            calc_input = CalcInput(
+                food=food,
+                quantity=float(quantity_in_grams),
+                unit="grams",
+            )
+            friendly, by_id = compute_item_nutrients(calc_input)
+
+            # Restore original food_nutrients
+            food.food_nutrients = original_food_nutrients
+
+            # Collect all energy/carb IDs for this ingredient (to skip in general loop)
+            _energy_ids: set[int] = set()
+            _carb_ids: set[int] = set()
+            for fn in food_nutrients_fresh:
+                name = fn.nutrient.name
+                if _is_energy(name):
+                    _energy_ids.add(fn.nutrient_id)
+                elif _is_carb(name):
+                    _carb_ids.add(fn.nutrient_id)
+
+            # Accumulate coalesced energy under GLOBAL canonical ID
+            coalesced_energy = friendly["calories"]
+            if coalesced_energy and global_energy_id is not None:
+                if global_energy_id not in nutrient_totals:
+                    nutrient_totals[global_energy_id] = Decimal("0")
+                nutrient_totals[global_energy_id] += Decimal(str(coalesced_energy))
+
+            # Accumulate coalesced carbs under GLOBAL canonical ID
+            coalesced_carbs = friendly["carbs"]
+            if coalesced_carbs and global_carb_id is not None:
+                if global_carb_id not in nutrient_totals:
+                    nutrient_totals[global_carb_id] = Decimal("0")
+                nutrient_totals[global_carb_id] += Decimal(str(coalesced_carbs))
+
+            # Accumulate all other (non-energy, non-carb) nutrients from by_id
+            skip_ids = _energy_ids | _carb_ids
+            for nutrient_id, amount in by_id.items():
+                if nutrient_id in skip_ids:
+                    continue
+                if nutrient_id not in nutrient_totals:
+                    nutrient_totals[nutrient_id] = Decimal("0")
+                nutrient_totals[nutrient_id] += Decimal(str(amount))
+
+        return total_weight, nutrient_totals
 
     @staticmethod
     async def _get_quantity_in_grams(
@@ -763,64 +779,42 @@ class RecipeService:
         )
         ingredients = list(result.scalars().all())
 
-        # Calculate total weight and nutrients
-        total_weight = Decimal("0")
-        nutrient_totals: dict[int, Decimal] = {}
-
+        # Re-query fresh nutrients for each ingredient food (same as _materialize_recipe)
+        _fresh_nutrients: dict[int, list] = {}
         for ingredient in ingredients:
-            ing_food = ingredient.food
+            fid = ingredient.food_id
+            if fid not in _fresh_nutrients:
+                _fn_result = await db.execute(
+                    select(FoodNutrient)
+                    .where(FoodNutrient.food_id == fid)
+                    .options(selectinload(FoodNutrient.nutrient))
+                    .execution_options(populate_existing=True)
+                )
+                _fresh_nutrients[fid] = list(_fn_result.unique().scalars().all())
 
-            # Calculate weight in grams
-            quantity_in_grams = await RecipeService._get_quantity_in_grams(
-                db, ingredient
-            )
-            total_weight += quantity_in_grams
-
-            # Calculate nutrients
-            for food_nutrient in ing_food.food_nutrients:
-                nutrient_id = food_nutrient.nutrient_id
-
-                # Get nutrient per gram
-                if ing_food.created_by_user_id:
-                    # Custom food: amount_per_serving is per serving_size
-                    nutrient_per_gram = food_nutrient.amount_per_serving / ing_food.serving_size
-                else:
-                    # USDA food: amount_per_serving is per 100g
-                    nutrient_per_gram = food_nutrient.amount_per_serving / Decimal("100")
-
-                # Total nutrient from this ingredient
-                nutrient_amount = nutrient_per_gram * quantity_in_grams
-
-                if nutrient_id not in nutrient_totals:
-                    nutrient_totals[nutrient_id] = Decimal("0")
-                nutrient_totals[nutrient_id] += nutrient_amount
+        # Bug 2: Use same compute_item_nutrients logic as _materialize_recipe
+        total_weight, nutrient_totals = await RecipeService._compute_recipe_nutrients(
+            db, recipe, ingredients, _fresh_nutrients
+        )
 
         # Update food serving_size
         food.serving_size = total_weight / recipe.servings
 
-        # Update FoodNutrient entries
+        # Bug 1: Delete all existing FoodNutrient entries before inserting fresh ones
+        await db.execute(
+            delete(FoodNutrient).where(FoodNutrient.food_id == food.id)
+        )
+        await db.flush()
+
+        # Insert fresh FoodNutrient entries (always create new, no update)
         for nutrient_id, total_amount in nutrient_totals.items():
             per_serving = total_amount / recipe.servings
-
-            # Find existing FoodNutrient
-            result = await db.execute(
-                select(FoodNutrient).where(
-                    FoodNutrient.food_id == food.id,
-                    FoodNutrient.nutrient_id == nutrient_id,
-                )
+            food_nutrient = FoodNutrient(
+                food_id=food.id,
+                nutrient_id=nutrient_id,
+                amount_per_serving=per_serving,
             )
-            food_nutrient = result.scalar_one_or_none()
-
-            if food_nutrient:
-                food_nutrient.amount_per_serving = per_serving
-            else:
-                # Create new one (shouldn't happen, but handle it)
-                food_nutrient = FoodNutrient(
-                    food_id=food.id,
-                    nutrient_id=nutrient_id,
-                    amount_per_serving=per_serving,
-                )
-                db.add(food_nutrient)
+            db.add(food_nutrient)
 
         # Update FoodPortion for serving unit to reflect new serving_size
         result = await db.execute(
