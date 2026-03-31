@@ -1,0 +1,100 @@
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:40:39] [WARNING] reconnection to node "d8d2779fe1e308" (ID: 916435311) failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:41:13] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:41:16] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:41:21] [ERROR] unable to determine if server is in recovery
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:41:23] [DETAIL] query text is:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | SELECT pg_catalog.pg_is_in_recovery()
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:41:24] [WARNING] unable to determine node recovery status
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:04] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:05] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:05] [WARNING] connection to node "d8d2779fe1e308" (ID: 916435311) lost
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:06] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection pointer is NULL
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:06] [INFO] attempting to reconnect to node "d8d2779fe1e308" (ID: 916435311)
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:34] [ERROR] connection to database failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:36] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection to server at "d8d2779fe1e308.vm.whati8-db.internal" (fdaa:57:a6fa:a7b:742:11ee:d9b4:2), port 5433 failed: timeout expired
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:36] [DETAIL] attempted to connect using:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |   user=repmgr connect_timeout=5 dbname=repmgr host=d8d2779fe1e308.vm.whati8-db.internal port=5433 fallback_application_name=repmgr options=-csearch_path=
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:37] [WARNING] reconnection to node "d8d2779fe1e308" (ID: 916435311) failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:42:57] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:01] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:01] [ERROR] unable to determine if server is in recovery
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:01] [DETAIL] query text is:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | SELECT pg_catalog.pg_is_in_recovery()
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:01] [WARNING] unable to determine node recovery status
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:01] [INFO] monitoring primary node "d8d2779fe1e308" (ID: 916435311) in degraded state
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:01] [DETAIL] waiting for the node to become available
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:29] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:34] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:36] [WARNING] connection to node "d8d2779fe1e308" (ID: 916435311) lost
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:39] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection pointer is NULL
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:43:45] [INFO] attempting to reconnect to node "d8d2779fe1e308" (ID: 916435311)
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:12] [ERROR] connection to database failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:15] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection to server at "d8d2779fe1e308.vm.whati8-db.internal" (fdaa:57:a6fa:a7b:742:11ee:d9b4:2), port 5433 failed: timeout expired
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:16] [DETAIL] attempted to connect using:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |   user=repmgr connect_timeout=5 dbname=repmgr host=d8d2779fe1e308.vm.whati8-db.internal port=5433 fallback_application_name=repmgr options=-csearch_path=
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:20] [WARNING] reconnection to node "d8d2779fe1e308" (ID: 916435311) failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:45] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:47] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:48] [ERROR] unable to determine if server is in recovery
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:48] [DETAIL] query text is:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | SELECT pg_catalog.pg_is_in_recovery()
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:44:48] [WARNING] unable to determine node recovery status
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:03] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:04] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:04] [WARNING] connection to node "d8d2779fe1e308" (ID: 916435311) lost
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:04] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection pointer is NULL
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:04] [INFO] attempting to reconnect to node "d8d2779fe1e308" (ID: 916435311)
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:24] [ERROR] connection to database failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:27] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection to server at "d8d2779fe1e308.vm.whati8-db.internal" (fdaa:57:a6fa:a7b:742:11ee:d9b4:2), port 5433 failed: timeout expired
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:30] [DETAIL] attempted to connect using:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |   user=repmgr connect_timeout=5 dbname=repmgr host=d8d2779fe1e308.vm.whati8-db.internal port=5433 fallback_application_name=repmgr options=-csearch_path=
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:33] [WARNING] reconnection to node "d8d2779fe1e308" (ID: 916435311) failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:48] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:51] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:54] [ERROR] unable to determine if server is in recovery
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:57] [DETAIL] query text is:
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | SELECT pg_catalog.pg_is_in_recovery()
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:45:58] [WARNING] unable to determine node recovery status
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:46:18] [WARNING] unable to ping "host=d8d2779fe1e308.vm.whati8-db.internal port=5433 user=repmgr dbname=repmgr connect_timeout=5"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:46:21] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:46:23] [WARNING] connection to node "d8d2779fe1e308" (ID: 916435311) lost
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:46:29] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection pointer is NULL
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:46:34] [INFO] attempting to reconnect to node "d8d2779fe1e308" (ID: 916435311)
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:47:13] [ERROR] connection to database failed
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:47:15] [DETAIL]
+[2m2026-03-31T00:47:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | connection to server at "d8d2779fe1e308.vm.whati8-db.internal" (fdaa:57:a6fa:a7b:742:11ee:d9b4:2), port 5433 failed: timeout expired
+[2m2026-03-31T00:48:04Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |
+[2m2026-03-31T01:03:54Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:03:51 json error: write vsock vm(3):10100->host(2):1785494380: broken pipe
+[2m2026-03-31T01:06:39Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:06:38 json error: write vsock vm(3):10100->host(2):1785494419: broken pipe
+[2m2026-03-31T01:08:38Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:08:38 json error: write vsock vm(3):10100->host(2):1785494446: broken pipe
+[2m2026-03-31T01:09:38Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:09:38 json error: write vsock vm(3):10100->host(2):1785494459: broken pipe
+[2m2026-03-31T01:10:38Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:10:38 json error: write vsock vm(3):10100->host(2):1785494473: broken pipe
+[2m2026-03-31T01:11:45Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:11:44 json error: write vsock vm(3):10100->host(2):1785494486: broken pipe
+[2m2026-03-31T01:12:41Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:12:41 json error: write vsock vm(3):10100->host(2):1785494499: broken pipe
+[2m2026-03-31T01:13:50Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:13:49 json error: write vsock vm(3):10100->host(2):1785494513: broken pipe
+[2m2026-03-31T01:15:36Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:15:36 json error: write vsock vm(3):10100->host(2):1785494539: broken pipe
+[2m2026-03-31T01:17:44Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:17:44 json error: write vsock vm(3):10100->host(2):1785494565: broken pipe
+[2m2026-03-31T01:18:40Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:18:39 json error: write vsock vm(3):10100->host(2):1785494578: broken pipe
+[2m2026-03-31T01:20:20Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m | [2026-03-31 00:47:51] [DETAIL] attempted to connect using:
+[2m2026-03-31T01:21:22Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:21:12 json error: write vsock vm(3):10100->host(2):1785494604: broken pipe
+[2m2026-03-31T01:21:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:21:50 json error: write vsock vm(3):10100->host(2):1785494617: broken pipe
+[2m2026-03-31T01:22:36Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:22:36 json error: write vsock vm(3):10100->host(2):1785494630: broken pipe
+[2m2026-03-31T01:24:16Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:24:15 json error: write vsock vm(3):10100->host(2):1785494643: broken pipe
+[2m2026-03-31T01:25:02Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:25:01 json error: write vsock vm(3):10100->host(2):1785494656: broken pipe
+[2m2026-03-31T01:25:59Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m]2026/03/31 01:25:58 json error: write vsock vm(3):10100->host(2):1785494669: broken pipe
+[2m2026-03-31T01:32:16Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;2mpostgres[0m | 2026-03-31 01:04:06.380 UTC [1531] WARNING:  autovacuum worker took too long to start; canceled
+[2m2026-03-31T01:33:51Z[0m app[d8d2779fe1e308] [32mdfw[0m [[34minfo[0m][1;38;5;4mrepmgrd [0m |   user=repmgr connect_timeout=5 dbname=repmgr host=d8d2779fe1e308.vm.whati8-db.internal port=5433 fallback_application_name=repmgr options=-csearch_path=

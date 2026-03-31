@@ -14,6 +14,32 @@ from whati8.models.user_food import UserFood
 
 logger = get_logger(__name__)
 
+# Standard unit-to-gram conversions (approximate, water-density for volume units).
+# Used as fallback when a food has no matching portion entry.
+_STANDARD_UNIT_GRAMS = {
+    "oz": Decimal("28.35"),
+    "ounce": Decimal("28.35"),
+    "ounces": Decimal("28.35"),
+    "lb": Decimal("453.592"),
+    "lbs": Decimal("453.592"),
+    "pound": Decimal("453.592"),
+    "pounds": Decimal("453.592"),
+    "cup": Decimal("240"),
+    "cups": Decimal("240"),
+    "tbsp": Decimal("15"),
+    "tablespoon": Decimal("15"),
+    "tablespoons": Decimal("15"),
+    "tsp": Decimal("5"),
+    "teaspoon": Decimal("5"),
+    "teaspoons": Decimal("5"),
+    "fl oz": Decimal("30"),
+    "fluid ounce": Decimal("30"),
+    "fluid ounces": Decimal("30"),
+    "ml": Decimal("1"),
+    "liter": Decimal("1000"),
+    "litre": Decimal("1000"),
+}
+
 
 class RecipeService:
     """Service for recipe management with versioning and cascade updates."""
@@ -506,9 +532,6 @@ class RecipeService:
 
         # Look up portion
         food = ingredient.food
-        if not food.portions:
-            # No portions, assume quantity is grams
-            return ingredient.quantity
 
         import re
 
@@ -519,21 +542,36 @@ class RecipeService:
             s = re.sub(r'(\d+)\.0g\)', lambda m: m.group(1) + 'g)', s)
             return s.strip().lower()
 
-        ing_unit_norm = normalize(ingredient.unit)
-        ing_desc_norm = normalize(ingredient.portion_description or ingredient.unit)
+        if food.portions:
+            ing_unit_norm = normalize(ingredient.unit)
+            ing_desc_norm = normalize(ingredient.portion_description or ingredient.unit)
 
-        # Find matching portion
-        for portion in food.portions:
-            p_desc_norm = normalize(portion.portion_description or '')
-            p_unit_norm = (portion.unit_name or '').lower()
+            # Find matching portion
+            for portion in food.portions:
+                p_desc_norm = normalize(portion.portion_description or '')
+                p_unit_norm = (portion.unit_name or '').lower()
 
-            # Match by normalized description
-            if p_desc_norm and (p_desc_norm == ing_unit_norm or p_desc_norm == ing_desc_norm):
-                return ingredient.quantity * portion.gram_weight
+                # Match by normalized description
+                if p_desc_norm and (p_desc_norm == ing_unit_norm or p_desc_norm == ing_desc_norm):
+                    return ingredient.quantity * portion.gram_weight
 
-            # Match by unit_name
-            if p_unit_norm and (p_unit_norm == ing_unit_norm or p_unit_norm == ingredient.unit.lower()):
-                return ingredient.quantity * portion.gram_weight
+                # Match by unit_name
+                if p_unit_norm and (p_unit_norm == ing_unit_norm or p_unit_norm == ingredient.unit.lower()):
+                    return ingredient.quantity * portion.gram_weight
+
+        # Standard unit conversions (fallback when no portion matches)
+        unit_lower = ingredient.unit.lower().strip()
+
+        # Check for parenthetical gram weight like "cup (220.0g)"
+        paren_match = re.search(r'\((\d+(?:\.\d+)?)g\)', unit_lower)
+        if paren_match:
+            gram_per_unit = Decimal(paren_match.group(1))
+            return ingredient.quantity * gram_per_unit
+
+        # Check standard conversions
+        for std_unit, grams_per in _STANDARD_UNIT_GRAMS.items():
+            if unit_lower == std_unit or unit_lower.startswith(std_unit + " "):
+                return ingredient.quantity * grams_per
 
         # Default: assume quantity is grams
         return ingredient.quantity
