@@ -1,108 +1,102 @@
-# PLAN.md — Nutrition Calculator Refactor
+# Phase 1: USDA Sanitization — Implementation Plan
 
 ## Goal
-Eliminate redundant energy/carb coalescing layers. Make `compute_item_nutrients()` the single source of truth. Remove all nutrient_id-based lookups for energy/carbs.
 
-## Current Architecture (3 coalescing layers — BAD)
-1. `compute_item_nutrients()` → `friendly` dict (correct coalescing)
-2. `compute_summary_from_precomputed()` → display_name hack to bypass `by_id`
-3. `_compute_recipe_nutrients()` → two-pass global canonical ID system (60+ lines)
+Add 11 new columns to the `foods` table and pre-compute 5 core macros (calories, protein, carbs, fat, fiber) from `food_nutrients`, eliminating the need for runtime energy/carb coalescing. Also re-import the full Foundation Foods dataset.
 
-## Target Architecture (1 layer — GOOD)
+## Tech Stack
 
-### `compute_item_nutrients(food, qty, unit)` → `friendly` dict
-- Single source of truth for per-food nutrition
-- Handles all energy coalescing (Atwater General > Specific > plain)
-- Handles all carb coalescing (summation > difference)
-- Returns `friendly: {calories, carbs, protein, fat, fiber, sugar, sat_fat, sodium, potassium}`
-- Also returns `by_id` for non-coalesced nutrients (minerals, vitamins, etc.)
+- Python 3.11, FastAPI, SQLAlchemy async, asyncpg, PostgreSQL 16
+- Alembic for migrations
+- pytest for testing (579 existing tests, all passing)
+- Linter: `uv run ruff check .`
+- Test command: `uv run pytest tests/ -q --tb=short`
+- Project root: `/home/aaron/source/whati8`
 
-### Recipe nutrition = `Σ friendly` across ingredients
-```python
-total_friendly = {k: 0 for k in FRIENDLY_MAP}
-for ingredient in recipe.ingredients:
-    friendly, _ = compute_item_nutrients(food, qty_grams, "grams")
-    for k in friendly:
-        total_friendly[k] += friendly[k]
-```
-- Store as FoodNutrient entries using canonical nutrient IDs (one mapping dict)
-- No two-pass system, no energy/carb special handling
-- ~15 lines instead of ~60
+## Steps
 
-### Summary display = `friendly` → user config
-```python
-for cfg in user_config:
-    if cfg.formula:
-        value = eval_formula(cfg.formula, total_friendly)  # formulas ALWAYS use totals
-    elif cfg.friendly_key:  # NEW: map config to friendly key
-        value = total_friendly[cfg.friendly_key]
-    elif cfg.nutrient_id:  # fallback for vitamins/minerals
-        value = sum(by_id.get(cfg.nutrient_id, 0) for by_id in item_by_ids)
-```
+### Step 1: Alembic Migration — Add Columns + Update Model
 
-### Custom formulas (WW points, etc.)
-- Applied to `total_friendly`, NOT per-ingredient
-- Input variables are friendly keys: `Calories`, `Fat`, `Fiber`, `Protein`
-- `formula_mode` simplified: formulas always get totals
+**What:** Create Alembic migration to add 11 new columns to `foods` table. Update the `Food` SQLAlchemy model to include the new columns. Add indexes on `tier` and `data_source`.
 
-## Schema Change (user_summary_nutrients)
-Add `friendly_key` column (nullable):
-- "Calories" → friendly_key="calories"
-- "Protein" → friendly_key="protein" 
-- "Carbs" → friendly_key="carbs"
-- "Fat" → friendly_key="fat"
-- "Fiber" → friendly_key="fiber"
-- WW Points → formula (no friendly_key needed)
-- Vitamin C → nutrient_id (no friendly_key)
+**Acceptance Criteria:**
+- Alembic migration runs successfully (upgrade + downgrade)
+- `Food` model has all 11 new mapped columns with correct types
+- All new columns are nullable or have server defaults (backward-compatible)
+- Indexes `ix_foods_tier` and `ix_foods_data_source` are created
+- All 579 existing tests still pass
+- Migration is reversible (downgrade drops the columns and indexes)
 
-Migration: populate `friendly_key` for existing rows based on display_name.
+**Columns:**
+| Column | SQLAlchemy Type | Server Default | Nullable |
+|--------|----------------|----------------|----------|
+| tier | SmallInteger | — | True |
+| data_source | String(50) | — | True |
+| is_deprecated | Boolean | "false" | False |
+| imported_at | DateTime | — | True |
+| is_complete | Boolean | "true" | False |
+| sanitized_base_grams | Numeric(10,2) | — | True |
+| sanitized_calories | Numeric(10,2) | — | True |
+| sanitized_protein | Numeric(10,2) | — | True |
+| sanitized_carbs | Numeric(10,2) | — | True |
+| sanitized_fat | Numeric(10,2) | — | True |
+| sanitized_fiber | Numeric(10,2) | — | True |
 
-## Canonical Nutrient ID Mapping (for recipe FoodNutrient storage)
-```python
-CANONICAL_NUTRIENT_IDS = {
-    "calories": 39,    # Energy
-    "carbs": 81,       # Carbohydrate, by difference
-    "protein": 34,     # Protein
-    "fat": 80,         # Total lipid (fat)
-    "fiber": 41,       # Fiber, total dietary
-    "sugar": 95,       # Sugars, Total
-    "sat_fat": 96,     # Fatty acids, total saturated
-    "sodium": 64,      # Sodium, Na
-    "potassium": 66,   # Potassium, K
-}
-```
-These IDs should be looked up from DB on startup and cached, not hardcoded.
+### Step 2: Sanitization Script — USDA Foods
 
-## Changes Required
+**What:** Create `scripts/sanitize_foods.py` that populates `tier`, `data_source`, `sanitized_base_grams`, and 5 sanitized macro columns for all USDA foods. Includes energy/carb coalescing logic.
 
-### 1. `nutrient_calculator.py`
-- `compute_item_nutrients()`: Keep as-is (already correct)
-- `compute_summary_from_precomputed()`: Use `friendly_key` from config when available, fall back to `nutrient_id` for vitamins/minerals. Remove display_name hack.
-- Remove `by_id` backfill (no longer needed once summary uses friendly_key)
+**Acceptance Criteria:**
+- Script connects to DB directly (sync psycopg2, not async SQLAlchemy — simpler for a one-shot script)
+- Accepts `--database-url` flag or reads `DATABASE_URL` from env
+- Idempotent: safe to re-run (uses UPDATE, not INSERT)
+- Sets `tier=0` for all USDA foods
+- Sets `data_source` = `foundation` (FDC >= 300K or has Atwater energy) or `sr_legacy`
+- Sets `sanitized_base_grams=100` for all USDA foods
+- Energy coalescing: Atwater General > Specific > plain Energy
+- Carb coalescing: summation > difference
+- Direct copy: protein, fat, fiber
+- Sets `is_complete=false` when cal/protein/carb/fat is NULL
+- Sets `imported_at` and `is_deprecated=false`
+- Prints summary stats (sanitized count by data_source, incomplete count)
+- Completes in <60s for ~8K foods
 
-### 2. `recipe_service.py`
-- `_compute_recipe_nutrients()`: Replace 60-line two-pass system with simple `Σ friendly` loop
-- Store recipe nutrition using canonical IDs from mapping
-- Keep non-coalesced nutrients (vitamins/minerals) accumulated via `by_id`
+### Step 3: Sanitization Script — Custom + Recipe Foods
 
-### 3. `models/user_summary_nutrient.py` (or equivalent)
-- Add `friendly_key: str | None` column
-- Migration to populate existing rows
+**What:** Extend `scripts/sanitize_foods.py` to handle custom foods (tier=10) and recipe foods (tier=20).
 
-### 4. `summary_config.py` (router)
-- `_ensure_defaults()`: Include `friendly_key` in default config creation
-- API: Accept `friendly_key` in create/update
+**Acceptance Criteria:**
+- Custom foods: `tier=10`, `data_source='custom'`
+- Custom foods: `sanitized_base_grams` computed from serving unit:
+  - Gram units → `serving_size` directly
+  - Mass units (oz/lb/kg) → converted to grams
+  - Volume units → portion gram_weight lookup, fallback to water density
+  - Custom units → portion gram_weight lookup, fallback to `serving_size` grams
+- Custom foods: 5 macros copied from `food_nutrients` (no coalescing)
+- Recipe foods: `tier=20`, `data_source='recipe'`
+- Recipe foods: `sanitized_base_grams = serving_size`
+- Recipe foods: macros computed by summing ingredient sanitized values, divided by servings
+- Recipe sanitization runs AFTER USDA + custom (dependency order)
+- Only current (non-expired) recipe foods are sanitized
+- Sets `is_complete` appropriately for both types
+- Prints summary stats for custom + recipe foods
 
-### 5. Tests
-- Unit tests for simplified recipe nutrition
-- Verify WW points formula uses total (not per-ingredient)
-- Verify friendly_key lookup works for summary
-- Verify nutrient_id fallback still works for vitamins/minerals
+### Step 4: Verification Script + Foundation Re-Import
 
-## Migration Plan
-1. Add `friendly_key` column (nullable, no breaking change)
-2. Populate `friendly_key` for existing rows
-3. Update `compute_summary_from_precomputed` to prefer `friendly_key`
-4. Simplify `_compute_recipe_nutrients` 
-5. Remove `by_id` backfill and display_name hack
-6. Update default config creation
+**What:** Create `scripts/verify_sanitization.py` that validates all sanitized values against source data. Also update the Foundation Foods import to fill the gap (~265 → ~1000).
+
+**Acceptance Criteria:**
+- Verification script compares sanitized values against `food_nutrients` source:
+  - USDA: sanitized_calories should match best energy variant in food_nutrients (within 0.01)
+  - Custom: sanitized values should match food_nutrients exactly (within 0.01)
+  - Recipe: sanitized values should match ingredient-sum computation (within 0.1 for rounding)
+- Reports: total foods checked, pass/fail counts by type, list of any failures
+- Verifies: zero NULL `sanitized_calories` for USDA foods
+- Reports: `is_complete=false` count
+- Foundation re-import: downloads latest dataset, imports new foods, deduplicates
+- Import logs: foods created, updated, duplicates removed
+- After re-import + re-sanitize: verification passes for all foods
+
+## Changelog
+
+Track in `CHANGELOG.md` at project root.

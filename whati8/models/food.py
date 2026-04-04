@@ -2,10 +2,11 @@
 Food model for USDA and custom food items.
 """
 
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from whati8.models.base import Base, TimestampMixin
@@ -81,6 +82,35 @@ class Food(Base, TimestampMixin):
         server_default="false",
     )
 
+    # Sanitization metadata
+    tier: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    data_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_deprecated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    imported_at: Mapped["datetime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_complete: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    sanitized_base_grams: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    sanitized_calories: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    sanitized_protein: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    sanitized_carbs: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    sanitized_fat: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    sanitized_fiber: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+
     # Additional details
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -118,6 +148,9 @@ class Food(Base, TimestampMixin):
         Index("ix_foods_brand_name", "brand", "name"),
         # Index for user's custom foods
         Index("ix_foods_user_id", "created_by_user_id"),
+        # Sanitization indexes
+        Index("ix_foods_tier", "tier"),
+        Index("ix_foods_data_source", "data_source"),
     )
 
     def __repr__(self) -> str:
