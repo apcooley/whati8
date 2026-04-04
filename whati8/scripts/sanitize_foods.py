@@ -5,6 +5,7 @@ Populates tier, data_source, sanitized_base_grams, and sanitized macro columns
 for all USDA foods (those with usda_fdc_id set).
 """
 
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -150,6 +151,14 @@ _VOLUME_ML: dict[str, float] = {
 
 # Gram units (serving_size is already in grams)
 _GRAM_UNITS = {"g", "gram", "grams"}
+
+
+def _extract_grams_from_unit(unit: str) -> float | None:
+    """Try to parse 'small (70.0g)' or '1.0 cup (220.0g)' patterns."""
+    match = re.search(r"\((\d+(\.\d+)?)\s*g\)", unit.lower())
+    if match:
+        return float(match.group(1))
+    return None
 
 
 async def sanitize_custom_foods(db: AsyncSession) -> dict:
@@ -303,19 +312,36 @@ async def sanitize_recipe_foods(db: AsyncSession) -> dict:
             ing_unit = (ing.unit or "").lower().strip()
             qty = float(ing.quantity)
 
+            grams = None
             if ing_unit in _GRAM_UNITS or ing_unit == "g":
                 grams = qty
             else:
-                # Look up portion matching unit
-                portion = next(
-                    (p for p in ing_food.portions if p.unit_name.lower() == ing_unit),
-                    None,
-                )
-                if portion:
-                    grams = qty / float(portion.amount) * float(portion.gram_weight)
+                # Try to extract weight from unit string like "small (70.0g)"
+                extracted_base = _extract_grams_from_unit(ing_unit)
+                if extracted_base is not None:
+                    grams = qty * extracted_base
                 else:
-                    # Unknown unit — skip
-                    continue
+                    # Look up portion matching unit
+                    portion = next(
+                        (
+                            p
+                            for p in ing_food.portions
+                            if p.unit_name.lower() == ing_unit
+                        ),
+                        None,
+                    )
+                    if portion:
+                        grams = qty / float(portion.amount) * float(portion.gram_weight)
+                    elif ing_unit in _VOLUME_ML:
+                        # Fallback for volume units if portion is missing
+                        grams = qty * _VOLUME_ML[ing_unit]
+                    elif ing_unit in _MASS_CONVERSIONS:
+                        # Fallback for mass units if portion is missing
+                        grams = qty * _MASS_CONVERSIONS[ing_unit]
+
+            if grams is None:
+                # Unknown unit — skip
+                continue
 
             base = float(ing_food.sanitized_base_grams)
             if base == 0:

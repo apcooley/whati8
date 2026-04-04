@@ -52,6 +52,8 @@ async def verify_sanitization(db: AsyncSession) -> dict:
         null_calories_usda: Number of USDA foods with NULL sanitized_calories
         incomplete_count: Number of foods with is_complete=False
         failures: List of failure dicts, each with at least 'name' and 'reason' keys
+        recipe_checked: Number of recipe foods checked
+        recipe_failures: Number of recipe foods with mismatched values
     """
     failures: list[dict] = []
     usda_checked = 0
@@ -59,6 +61,8 @@ async def verify_sanitization(db: AsyncSession) -> dict:
     custom_checked = 0
     custom_failures = 0
     null_calories_usda = 0
+    recipe_checked = 0
+    recipe_failures = 0
 
     # ---- USDA foods ----
     usda_result = await db.execute(
@@ -189,6 +193,141 @@ async def verify_sanitization(db: AsyncSession) -> dict:
                 "type": "custom",
             })
 
+    # ---- Recipe foods ----
+    from whati8.models.recipe import Recipe, RecipeIngredient
+    from whati8.scripts.sanitize_foods import (
+        _GRAM_UNITS,
+        _MASS_CONVERSIONS,
+        _VOLUME_ML,
+        _extract_grams_from_unit,
+    )
+
+    recipe_result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.ingredients)
+            .selectinload(RecipeIngredient.food)
+            .selectinload(Food.portions),
+            selectinload(Recipe.current_food),
+        )
+    )
+    recipes = recipe_result.scalars().all()
+
+    for recipe in recipes:
+        if not recipe.current_food_id or not recipe.current_food:
+            continue
+        food = recipe.current_food
+        if food.is_recipe_expired:
+            continue
+
+        recipe_checked += 1
+
+        # Re-calculate nutrition
+        total_cal = Decimal("0")
+        total_prot = Decimal("0")
+        total_carb = Decimal("0")
+        total_fat = Decimal("0")
+        total_fiber = Decimal("0")
+
+        for ing in recipe.ingredients:
+            ing_food = ing.food
+            if not ing_food or not ing_food.sanitized_base_grams:
+                continue
+
+            ing_unit = (ing.unit or "").lower().strip()
+            qty = float(ing.quantity)
+
+            grams = None
+            if ing_unit in _GRAM_UNITS or ing_unit == "g":
+                grams = qty
+            else:
+                extracted_base = _extract_grams_from_unit(ing_unit)
+                if extracted_base is not None:
+                    grams = qty * extracted_base
+                else:
+                    portion = next(
+                        (
+                            p
+                            for p in ing_food.portions
+                            if p.unit_name.lower() == ing_unit
+                        ),
+                        None,
+                    )
+                    if portion:
+                        grams = (
+                            qty / float(portion.amount) * float(portion.gram_weight)
+                        )
+                    elif ing_unit in _VOLUME_ML:
+                        grams = qty * _VOLUME_ML[ing_unit]
+                    elif ing_unit in _MASS_CONVERSIONS:
+                        grams = qty * _MASS_CONVERSIONS[ing_unit]
+
+            if grams is None:
+                continue
+
+            base = float(ing_food.sanitized_base_grams)
+            if base == 0:
+                continue
+            scale = grams / base
+
+            if ing_food.sanitized_calories is not None:
+                total_cal += Decimal(str(scale * float(ing_food.sanitized_calories)))
+            if ing_food.sanitized_protein is not None:
+                total_prot += Decimal(str(scale * float(ing_food.sanitized_protein)))
+            if ing_food.sanitized_carbs is not None:
+                total_carb += Decimal(str(scale * float(ing_food.sanitized_carbs)))
+            if ing_food.sanitized_fat is not None:
+                total_fat += Decimal(str(scale * float(ing_food.sanitized_fat)))
+            if ing_food.sanitized_fiber is not None:
+                total_fiber += Decimal(str(scale * float(ing_food.sanitized_fiber)))
+
+        servings = Decimal(str(float(recipe.servings)))
+        if servings > 0:
+            expected_calories = total_cal / servings
+            expected_protein = total_prot / servings
+            expected_carbs = total_carb / servings
+            expected_fat = total_fat / servings
+            expected_fiber = total_fiber / servings
+        else:
+            expected_calories = None
+            expected_protein = None
+            expected_carbs = None
+            expected_fat = None
+            expected_fiber = None
+
+        food_failed = False
+        reasons = []
+
+        # Recipes have slightly higher tolerance (0.1) due to rounding of ingredient weights
+        RECIPE_TOLERANCE = Decimal("0.1")
+
+        checks = [
+            ("calories", food.sanitized_calories, expected_calories),
+            ("protein", food.sanitized_protein, expected_protein),
+            ("carbs", food.sanitized_carbs, expected_carbs),
+            ("fat", food.sanitized_fat, expected_fat),
+            ("fiber", food.sanitized_fiber, expected_fiber),
+        ]
+
+        for field, actual, expected in checks:
+            if actual is None and expected is None:
+                continue
+            if actual is None or expected is None:
+                food_failed = True
+                reasons.append(f"{field}: sanitized={actual}, expected={expected}")
+            elif abs(actual - expected) > RECIPE_TOLERANCE:
+                food_failed = True
+                reasons.append(f"{field}: sanitized={actual}, expected={expected}")
+
+        if food_failed:
+            recipe_failures += 1
+            failures.append({
+                "name": food.name,
+                "reason": "; ".join(reasons),
+                "food_id": food.id,
+                "type": "recipe",
+            })
+
     # ---- Incomplete count ----
     incomplete_result = await db.execute(
         select(Food).where(Food.is_complete == False)  # noqa: E712
@@ -204,4 +343,6 @@ async def verify_sanitization(db: AsyncSession) -> dict:
         "null_calories_usda": null_calories_usda,
         "incomplete_count": incomplete_count,
         "failures": failures,
+        "recipe_checked": recipe_checked,
+        "recipe_failures": recipe_failures,
     }
