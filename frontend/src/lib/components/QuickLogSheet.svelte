@@ -3,9 +3,10 @@
   import type { UserFood } from '../types/profile';
   import { getDisplayName, getFoodCalPerGram, STANDARD_MEALS } from '../types/profile';
   import { parseFraction } from '../utils/parseFraction';
+  import { buildPortionOptions, type PortionOption } from '../utils/portionOptions';
+  import { createNutritionPreview } from '../utils/nutritionPreview';
   import FractionInput from './FractionInput.svelte';
   import NutrientBadges from './NutrientBadges.svelte';
-  import { getFoodSummary, type SummaryNutrient } from '../api/foods';
 
   export let userFood: UserFood | null = null;
   export let visible = false;
@@ -22,56 +23,10 @@
   let submitting = false;
   let lastUserFoodId: number | null = null;
 
-  interface PortionOption {
-    label: string;
-    gram_weight: number;
-    default_qty: number;
-  }
-
   let portionOptions: PortionOption[] = [];
 
   $: if (userFood) {
-    const opts: PortionOption[] = [];
-    const food = userFood.food;
-
-    const SKIP_MODS = ['nlea serving', 'quantity not specified'];
-
-    // Add food-specific portions first
-    if (food.portions && food.portions.length > 0) {
-      for (const p of food.portions) {
-        const mod = (p.modifier ?? '').toLowerCase();
-        const unit = (p.unit_name ?? '').toLowerCase();
-        const desc = (p.portion_description ?? '').toLowerCase();
-        if (SKIP_MODS.some(s => mod.includes(s) || desc.includes(s))) continue;
-        
-        // Skip generic "grams" and "oz" portions (we add them as fallbacks)
-        if (desc === 'grams' || desc === 'oz') continue;
-        
-        let label: string;
-        // Prefer portion_description for custom foods, clean up USDA prefix
-        const cleanDesc = (p.portion_description || '').replace(/^[\d.]+ undetermined /, '');
-        if (cleanDesc && cleanDesc !== 'grams' && cleanDesc !== 'oz') {
-          label = cleanDesc;
-        } else if (p.modifier && unit !== 'undetermined') {
-          label = `${p.modifier} (${Math.round(p.gram_weight)}g)`;
-        } else if (p.modifier) {
-          label = `${p.modifier} (${Math.round(p.gram_weight)}g)`;
-        } else if (unit !== 'undetermined' && unit !== 'g') {
-          label = `${p.unit_name} (${Math.round(p.gram_weight)}g)`;
-        } else {
-          continue;
-        }
-        opts.push({ label, gram_weight: p.gram_weight, default_qty: p.amount });
-      }
-    }
-
-    // Add grams and oz as fallbacks (skip if already present)
-    const hasGrams = opts.some(o => o.label.toLowerCase() === 'grams');
-    const hasOz = opts.some(o => o.label.toLowerCase().startsWith('oz'));
-    if (!hasGrams) opts.push({ label: 'grams', gram_weight: 1, default_qty: food.serving_size || 100 });
-    if (!hasOz) opts.push({ label: 'oz', gram_weight: 28.35, default_qty: 1 });
-
-    portionOptions = opts;
+    portionOptions = buildPortionOptions(userFood.food.portions ?? []);
   }
 
   $: if (visible && userFood && userFood.id !== lastUserFoodId) {
@@ -104,17 +59,11 @@
     return quantity * portionOptions[selectedPortionIndex].gram_weight;
   })();
 
-  let summaryNutrients: SummaryNutrient[] | null = null;
-  let summaryTimer: ReturnType<typeof setTimeout> | null = null;
+  const { nutrients: summaryNutrientsStore, update: updatePreview } = createNutritionPreview();
+  $: summaryNutrients = $summaryNutrientsStore;
 
   $: if (userFood && estGrams > 0) {
-    // Debounce the API call while user adjusts quantity
-    if (summaryTimer) clearTimeout(summaryTimer);
-    summaryTimer = setTimeout(() => {
-      getFoodSummary(userFood!.food.id, estGrams)
-        .then(sn => { summaryNutrients = sn; })
-        .catch(() => { summaryNutrients = null; });
-    }, 200);
+    updatePreview(userFood.food.id, estGrams);
   }
 
   function onPortionChange() {

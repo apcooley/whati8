@@ -33,6 +33,7 @@
       unit?: string;
       portion_description?: string;
       searchText?: string;
+      summaryNutrients?: Array<{ name: string; value: number; unit: string }> | null;
     };
   }
 
@@ -108,11 +109,11 @@
   }
 
   function handleIngredientLock(index: number, event: CustomEvent) {
-    const { food_id, food_name, quantity, unit, portion_description } = event.detail;
+    const { food_id, food_name, quantity, unit, portion_description, summaryNutrients } = event.detail;
     ingredients[index] = {
       ...ingredients[index],
       state: 'locked',
-      data: { food_id, food_name, quantity, unit, portion_description },
+      data: { food_id, food_name, quantity, unit, portion_description, summaryNutrients },
     };
     ingredients = [...ingredients];
   }

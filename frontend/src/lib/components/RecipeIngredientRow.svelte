@@ -1,15 +1,14 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import { searchProfileFoods } from '../api/profile';
-  import { searchFoods } from '../api/foods';
+  import { searchFoods, type SummaryNutrient } from '../api/foods';
   import type { FoodSearchResultItem } from '../types/profile';
   import { apiRequest } from '../api/client';
-
-  interface PortionOption {
-    label: string;
-    gram_weight: number;
-    default_qty: number;
-  }
+  import { parseFraction } from '../utils/parseFraction';
+  import { buildPortionOptionsFromApi, type PortionOption } from '../utils/portionOptions';
+  import { createNutritionPreview } from '../utils/nutritionPreview';
+  import FractionInput from './FractionInput.svelte';
+  import NutrientBadges from './NutrientBadges.svelte';
 
   export let ingredient: {
     food_id?: number;
@@ -18,6 +17,7 @@
     unit?: string;
     portion_description?: string;
     searchText?: string;
+    summaryNutrients?: SummaryNutrient[] | null;
   } | null = null;
   export let state: 'editing' | 'locked' = 'editing';
   export let recipeId: number | null = null;
@@ -29,6 +29,7 @@
       quantity: number;
       unit: string;
       portion_description: string;
+      summaryNutrients: SummaryNutrient[] | null;
     };
     unlock: void;
     remove: void;
@@ -42,9 +43,24 @@
   let debounceTimer: ReturnType<typeof setTimeout>;
   let selectedFood: FoodSearchResultItem | null = null;
   let portions: PortionOption[] = [];
-  let quantity: number | null = ingredient?.quantity || null;
+  let quantityStr = ingredient?.quantity != null ? String(ingredient.quantity) : '1';
+  $: quantity = parseFraction(quantityStr) ?? 0;
   let selectedPortionIndex = 0;
-  let estimatedCal: number | null = null;
+
+  // Nutrition preview (shared with QuickLogSheet / EditLogSheet)
+  const { nutrients: previewStore, update: updatePreview, clear: clearPreview, destroy: destroyPreview } = createNutritionPreview();
+  $: previewNutrients = $previewStore;
+
+  $: estGrams = (() => {
+    if (!selectedFood || !portions[selectedPortionIndex]) return 0;
+    return quantity * portions[selectedPortionIndex].gram_weight;
+  })();
+
+  $: if (selectedFood && estGrams > 0) {
+    updatePreview(selectedFood.id, estGrams);
+  }
+
+  onDestroy(destroyPreview);
 
   async function handleSearch() {
     if (!searchQuery.trim()) {
@@ -55,7 +71,7 @@
     try {
       // Search profile foods first (server-side filtered)
       const profileResults = await searchProfileFoods(searchQuery, 10);
-      
+
       // Map profile foods to FoodSearchResultItem format with ★ prefix
       const profileItems: FoodSearchResultItem[] = profileResults.map(uf => ({
         id: uf.food.id,
@@ -74,7 +90,7 @@
 
       // Also search USDA
       const usdaRes = await searchFoods(searchQuery, 5);
-      
+
       // Combine: profile first, then USDA (avoid duplicates)
       const combined = [...profileItems];
       for (const r of usdaRes.results) {
@@ -101,40 +117,30 @@
     selectedFood = { ...food, name: cleanName };
     searchResults = [];
     searchQuery = cleanName;
+    clearPreview();
 
-    // Fetch portions - API returns flat array of {description, gram_weight}
+    // Fetch portions and build options via shared utility
     try {
       const rawPortions = await apiRequest<{description: string; gram_weight: number}[]>(`/foods/${food.id}/portions`);
-      
-      // Convert to dropdown options
-      portions = rawPortions
-        .filter(p => !p.description.toLowerCase().includes('nlea'))
-        .filter(p => p.description !== 'grams' && p.description !== 'oz')
-        .map(p => ({
-          label: p.description,
-          gram_weight: p.gram_weight,
-          default_qty: 1,
-        }));
-
-      // Add grams + oz fallbacks if not present
-      if (!portions.some(p => p.label === 'grams')) {
-        portions.push({ label: 'grams', gram_weight: 1, default_qty: 100 });
-      }
-      if (!portions.some(p => p.label === 'oz')) {
-        portions.push({ label: 'oz', gram_weight: 28.35, default_qty: 1 });
-      }
+      portions = buildPortionOptionsFromApi(rawPortions);
 
       // Set quantity from first portion's default
-      if (portions.length > 0 && quantity === null) {
-        quantity = portions[0].default_qty;
+      selectedPortionIndex = 0;
+      if (portions.length > 0) {
+        quantityStr = String(portions[0].default_qty);
       }
     } catch {
       portions = [];
     }
   }
 
+  function onPortionChange() {
+    const opt = portions[selectedPortionIndex];
+    if (opt) quantityStr = String(opt.default_qty);
+  }
+
   function handleLock() {
-    if (!selectedFood || quantity === null || portions.length === 0) return;
+    if (!selectedFood || quantity <= 0 || portions.length === 0) return;
     const portion = portions[selectedPortionIndex];
     dispatch('lock', {
       food_id: selectedFood.id,
@@ -142,6 +148,7 @@
       quantity: quantity,
       unit: portion.label,
       portion_description: portion.label,
+      summaryNutrients: previewNutrients,
     });
   }
 
@@ -151,13 +158,6 @@
 
   function handleRemove() {
     dispatch('remove');
-  }
-
-  // Estimate calories for locked ingredient (rough)
-  $: if (state === 'locked' && ingredient?.food_name) {
-    // For locked, we can't easily compute without fetching food details again
-    // For MVP, just show "~X kcal" placeholder
-    estimatedCal = null;
   }
 </script>
 
@@ -197,32 +197,40 @@
 
     <!-- Quantity & portion inputs (shown after food selected) -->
     {#if selectedFood && portions.length > 0}
-      <div class="flex gap-2">
-        <input
-          type="number"
-          bind:value={quantity}
-          step="0.1"
-          min="0"
-          placeholder="Qty"
-          class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
-        />
-        <select
-          bind:value={selectedPortionIndex}
-          class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
-        >
-          {#each portions as p, i}
-            <option value={i}>{p.label}</option>
-          {/each}
-        </select>
+      <div class="flex gap-2 items-end">
+        <div class="flex-1 min-w-0">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Qty</label>
+          <FractionInput bind:value={quantityStr} />
+        </div>
+        <div class="flex-1 min-w-0">
+          <label class="block text-xs font-medium text-gray-600 mb-1" for="ingredient-unit">Unit</label>
+          <select
+            id="ingredient-unit"
+            bind:value={selectedPortionIndex}
+            on:change={onPortionChange}
+            class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+          >
+            {#each portions as p, i}
+              <option value={i}>{p.label}</option>
+            {/each}
+          </select>
+        </div>
         <button
           type="button"
           on:click={handleLock}
-          disabled={quantity === null || quantity <= 0}
-          class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          disabled={quantity <= 0}
+          class="px-4 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
           ✓
         </button>
       </div>
+
+      <!-- Nutrition preview -->
+      {#if previewNutrients && previewNutrients.length > 0}
+        <div class="text-center text-sm text-gray-500">
+          ≈ <NutrientBadges summaryNutrients={previewNutrients} size="sm" />
+        </div>
+      {/if}
     {/if}
 
     <!-- Remove button -->
@@ -232,21 +240,23 @@
         on:click={handleRemove}
         class="text-xs text-red-600 hover:text-red-700"
       >
-        🗑️ Remove
+        Remove
       </button>
     </div>
   </div>
 {:else}
   <!-- Locked state -->
   <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-    <div class="flex-1">
+    <div class="flex-1 min-w-0">
       <p class="text-sm font-semibold text-gray-900">{ingredient?.food_name || 'Unknown'}</p>
       <p class="text-xs text-gray-600">
         {ingredient?.quantity} {ingredient?.unit}
-        {#if estimatedCal}
-          • ~{estimatedCal} kcal
-        {/if}
       </p>
+      {#if ingredient?.summaryNutrients && ingredient.summaryNutrients.length > 0}
+        <div class="mt-1">
+          <NutrientBadges summaryNutrients={ingredient.summaryNutrients} size="xs" />
+        </div>
+      {/if}
     </div>
     <div class="flex gap-2">
       <button

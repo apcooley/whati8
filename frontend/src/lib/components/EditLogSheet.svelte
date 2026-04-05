@@ -4,9 +4,9 @@
   import { STANDARD_MEALS } from '../types/profile';
   import { apiRequest } from '../api/client';
   import { parseFraction } from '../utils/parseFraction';
+  import { createNutritionPreview } from '../utils/nutritionPreview';
   import FractionInput from './FractionInput.svelte';
   import NutrientBadges from './NutrientBadges.svelte';
-  import { getFoodSummary, type SummaryNutrient } from '../api/foods';
 
   export let entry: DailyLogEntry | null = null;
   export let visible = false;
@@ -39,17 +39,11 @@
     ? selectedPortion.gram_weight * quantity
     : unit === 'grams' ? quantity : (entry ? entry.quantity : 0);
 
-  let editSummary: SummaryNutrient[] | null = null;
-  let editSummaryTimer: ReturnType<typeof setTimeout> | null = null;
+  const { nutrients: editSummaryStore, update: updatePreview } = createNutritionPreview();
+  $: editSummary = $editSummaryStore;
 
   $: if (entry && estGrams > 0) {
-    if (editSummaryTimer) clearTimeout(editSummaryTimer);
-    editSummaryTimer = setTimeout(() => {
-      if (!entry) return;
-      getFoodSummary(entry.food_id, estGrams)
-        .then(sn => { editSummary = sn; })
-        .catch(() => { editSummary = null; });
-    }, 200);
+    updatePreview(entry.food_id, estGrams);
   }
 
   async function loadPortions(foodId: number) {
